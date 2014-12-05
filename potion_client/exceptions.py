@@ -13,6 +13,5 @@
 # limitations under the License.
 
 
-def camelize(string):
-    assert isinstance(string, str)
-    return "".join([part.capitalize() for part in string.replace("-", "_").split("_")])
+class NotFoundException(Exception):
+    pass

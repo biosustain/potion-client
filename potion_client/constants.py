@@ -13,6 +13,8 @@
 # limitations under the License.
 
 SCHEMA_PATH = "/schema"
+DEFAULT_PER_PAGE = 20
+
 
 #HTTP constants
 GET = "GET"
@@ -26,4 +28,16 @@ LINKS = "links"
 HREF = "href"
 METHOD = "method"
 REL = "rel"
-SCHEMA = "SCHEMA"
+SCHEMA = "schema"
+DEFINITIONS = "definitions"
+TARGET_SCHEMA = "targetSchema"
+URI = "_uri"
+TYPE = "type"
+ITEMS = "items"
+
+
+#Expected types
+TYPES = {
+    "array": list,
+    "object": dict
+}

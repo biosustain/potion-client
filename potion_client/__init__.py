@@ -12,25 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import jsonschema
 import requests
 from .constants import *
-
-#schema
+from potion_client.exceptions import NotFoundException
 from potion_client.routes import Resource
 
 
-
-
 class Client(object):
-    def __init__(self, host=None, **requests_kwargs):
-        schema_request = requests.get(host+SCHEMA_PATH, **requests_kwargs)
-        #handle http errors
+    def __init__(self, base_url=None, schema_path="/schema", **requests_kwargs):
+        self._url_identifiers = {}
+        self.base_url = base_url
 
-        schema = json.loads(schema_request.text)
-        for name, desc in schema[PROPERTIES].items():
-            resource = Resource.factory(host+desc[REF], desc.get(DOC, ""), name, **requests_kwargs)
+
+        response = requests.get(base_url+schema_path, **requests_kwargs)
+        if response.status_code == 404:
+            raise NotFoundException()
+
+        self._schema = json.loads(response.text)
+        self._schema_cache = {}
+        self._schema_resolver = jsonschema.RefResolver(base_uri=base_url,
+                                                       referrer=self._schema,
+                                                       cache_remote=True,
+                                                       store=self._schema_cache)
+        for name, desc in self._schema[PROPERTIES].items():
+            class_schema_url = self.base_url + desc[REF]
+            response = requests.get(class_schema_url, **requests_kwargs)
+            class_schema = json.loads(response.text)
+            resource = Resource.factory(desc.get(DOC, ""), name, class_schema, requests_kwargs)
+            resource.client = self
             setattr(self, resource.__name__, resource)
+            self._url_identifiers[desc[REF]] = resource
+
+    def resolve(self, path):
+        root, target = path.split("#")
+        if len(root) == 0:
+            schema = self._schema
+        else:
+            klass = self._url_identifiers[root+"#"]
+            schema = klass._schema
+
+        base, section, fragment = target.split("/")
 
 
-
-
+        return self._schema_resolver.resolve_fragment(schema[section], fragment)
