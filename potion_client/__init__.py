@@ -23,6 +23,7 @@ class Client(object):
     def __init__(self, base_url=None, schema_path="/schema", **requests_kwargs):
         self._url_identifiers = {}
         self.base_url = base_url
+        self._schema_path = schema_path
 
 
         response = requests.get(base_url+schema_path, **requests_kwargs)
@@ -35,6 +36,7 @@ class Client(object):
                                                        referrer=self._schema,
                                                        cache_remote=True,
                                                        store=self._schema_cache)
+
         for name, desc in self._schema[PROPERTIES].items():
             class_schema_url = self.base_url + desc[REF]
             response = requests.get(class_schema_url, **requests_kwargs)
@@ -44,15 +46,24 @@ class Client(object):
             setattr(self, resource.__name__, resource)
             self._url_identifiers[desc[REF]] = resource
 
+    @property
+    def pagination_url(self):
+        return self._schema_path + "#" + "/definitions/" + PAGINATION
+
     def resolve(self, path):
+        if path in self._url_identifiers:
+            return self._url_identifiers[path]._schema
+
         root, target = path.split("#")
         if len(root) == 0:
+            schema = self._schema
+        elif root == self._schema_path:
             schema = self._schema
         else:
             klass = self._url_identifiers[root+"#"]
             schema = klass._schema
-
-        base, section, fragment = target.split("/")
-
+        splt = target.split("/")
+        section = splt[-2]
+        fragment = splt[-1]
 
         return self._schema_resolver.resolve_fragment(schema[section], fragment)

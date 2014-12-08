@@ -34,6 +34,8 @@ TARGET_SCHEMA = "targetSchema"
 URI = "_uri"
 TYPE = "type"
 ITEMS = "items"
+PAGINATION = "_pagination"
+CLASS = "class"
 
 
 #Expected types
