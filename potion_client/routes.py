@@ -13,36 +13,60 @@ logger.level = logging.DEBUG
 _string_formatter = string.Formatter()
 
 
-class Route(object):
-    def __init__(self, path, resource_class, name):
-        self.path = path
-        self.name = name
-        self.instance = None
-        self.resource_class = resource_class
+class LinkProxy(object):
+    def __init__(self, route_proxy, link):
+        assert isinstance(link, (Link, type(None))), "Invalid link type (%s) for proxy" % type(link)
+        self.route_proxy = route_proxy
+        self.link = link
 
-    def __get__(self, instance, owner):
-        if instance is None:
-            self.instance = owner
-            return self._get
-        else:
-            self.instance = instance
-            return self
+    def __call__(self, *args, **kwargs):
+        return self.link(self.route_proxy.obj, *args, **kwargs)
 
-    def __call__(self):
-        return self._get()
+    def __getitem__(self, pos):
+        if isinstance(pos, tuple):
+            page = pos[0]
+            limit = pos[1]
+
+        return self(per_page=limit, page=page)
+
+
+class RouteProxy(object):
+    def __init__(self, route, obj):
+        assert isinstance(route, Route), "Invalid route type (%s) for proxy" % type(route)
+        assert isinstance(obj, (Resource, type)), "Invalid object type (%s) for proxy" % type(obj)
+        self.route = route
+        self.obj = obj
+        self.default = None
+        self._create_links_attributes()
+
+    def _create_links_attributes(self):
+        for link_name, link in self.route.links.items():
+            setattr(self, link_name, LinkProxy(self, link))
+        self.default = LinkProxy(self, self.route.default)
+
+    def __call__(self, *args, **kwargs):
+        return self.default(*args, **kwargs)
 
     @property
     def client(self):
-        if self.instance is None:
-            return None
-        else:
-            return self.instance.client
+        return self.obj.client
 
-    def generate_url(self):
-        base_url = self.instance.client.base_url
+
+class Route(object):
+    def __init__(self, path, name):
+        self.default = None
+        self.path = path
+        self.name = name
+        self.links = {}
+
+    def __call__(self, *args, **kwargs):
+        return self.default(None, *args, **kwargs)
+
+    def generate_url(self, obj):
+        base_url = obj.client.base_url
         url = "{base}{path}".format(base=base_url, path=self.path)
         logger.debug("Generated url: %s" % url)
-        return url.format(**self.extract_keys(self.instance, _string_formatter))
+        return url.format(**self.extract_keys(obj, _string_formatter))
 
     def extract_keys(self, resource, formatter=_string_formatter):
         format_iterator = formatter.parse(self.path)
@@ -53,197 +77,147 @@ class Route(object):
         return object_values
 
 
-class LazyPaginatedCollection(object):
-    def __init__(self, items, page, per_page, link, *args, **kwargs):
-        self.page = page
-        self.per_page = per_page
-        self.link = link
-        self.args = args
-        self.kwargs = kwargs
-        self.items = items
+class LazyCollectionIterartor(object):
 
-    def __getitem__(self, index):
-        print(index)
-        page = int(index/self.per_page)
-        print(page)
-        real_index = index - (page*index)
-        print(real_index)
-        if page != self.page:
-            self.page = page + 1
-            items = self.link(page=self.page, resolve=False, per_page=self.per_page, *self.args, **self.kwargs)
-            self.items = list(map(lambda i: self.link.resolver._from_json(i), items))
+    def __init__(self, collection):
+        self.collection = collection
+        self.pointer = 0
 
-
-        item = self.items[int(real_index)]
-        item._ensure_instance()
+    def __next__(self):
+        if self.pointer < len(self.collection.items):
+            item = self.collection[self.pointer]
+            self.pointer += 1
+        else:
+            if hasattr(self.collection, "next"):
+                self.collection = self.collection.next()
+                item = self.collection[0]
+                self.pointer = 1
+            else:
+                raise StopIteration
         return item
 
 
 class LazyCollection(object):
-    def __init__(self, items, link,  *args, **kwargs):
-        self.items = list(map(lambda i: self.link.resolver._from_json(i), items))
+
+    @classmethod
+    def from_url(cls, url, client, **kwargs):
+        response = requests.get(url, **kwargs)
+        return cls.__new__(cls, (response.json(), response.links, client))
+
+    def __init__(self, items, links, client, **request_kwargs):
+        self.items = items
+        self.links = links
+        self.request_kwargs = request_kwargs
+        self.client = client
+        if not self.links is None:
+            self._create_links()
+
+    def __iter__(self):
+        return LazyCollectionIterartor(self)
+
+    def _create_links(self):
+        for link_name, link_desc in self.links.items():
+            setattr(self, link_name, lambda: self.from_url(link_desc[URL], self.client, **self.request_kwargs))
 
     def __getitem__(self, index):
-        item = self.items[index]
-        item._ensure_instance()
+        item = self.client.resolve_element(self.items[index])
         return item
 
 
 class Link(object):
     def __init__(self, route, method="GET", schema=None, target_schema=None, requests_kwargs=None):
+        self.route = route
         self.method = method
         self.schema = schema
         self.target_schema = target_schema
-        self.requests_kwargs = requests_kwargs
-        self.route = route
-        self._resolved = False
+        self.request_kwargs = requests_kwargs
 
-    @property
-    def resolver(self):
-        if CLASS in self.target_schema:
-            return self.target_schema[CLASS]
-        else:
-            return self.route.resource_class
+    def __call__(self, obj, resolve=True, **kwargs):
+        self.schema = self._resolve_schema(obj.client, self.schema)
+        url = self.route.generate_url(obj)
+        json, params = self._process_kwargs(**kwargs)
+        print(url)
+        res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
+        print(res)
+        print(res.text)
+        res_obj = res.json()
+        valid_res = self._validate_out(res_obj)
 
-    def _resolve_schema(self):
-        if REF in self.schema:
-            pagination_url = self.route.client.pagination_url
-            if pagination_url == self.schema[REF]:
-                resolved_schema_ref = self.route.instance.client.resolve(self.schema[REF])
-                self.schema[PAGINATION] = Pagination(resolved_schema_ref)
+        if not resolve:
+            return valid_res
 
-        self._resolve_types(self.schema, type(None))
+        if isinstance(valid_res, list):
+            return LazyCollection(valid_res, res.links, obj.client, **self.request_kwargs)
 
-        if REF in self.target_schema:
-            self.target_schema[REF] = self.route.client.resolve(self.target_schema[REF])
-        else:
-            self.target_schema[REF] = self.route.resource_class._schema
+        return obj.client.resolve_element(valid_res)
 
-        self._resolve_types(self.target_schema, object)
+    def _process_kwargs(self, **kwargs):
+        json, params = None, None
 
-        if ITEMS in self.target_schema:
-            if REF in self.target_schema[ITEMS]:
-                if self.target_schema[ITEMS][REF] in self.route.client._url_identifiers:
-                    self.target_schema[CLASS] = self.route.client._url_identifiers[self.target_schema[ITEMS][REF]]
-                self.target_schema[ITEMS][REF] = self.route.client.resolve(self.target_schema[ITEMS][REF])
-
-        self._resolved = True
-
-    def _resolve_types(self, schema, resolve):
-        if TYPE in schema:
-            types = schema[TYPE]
-            if isinstance(types, list):
-                types = map(lambda x: TYPES[x], types)
-            else:
-                types = [TYPES[types]]
-            schema[TYPE] = types
-        else:
-            schema[TYPE] = [resolve]
-
-    def _extract_pagination(self, params, **kwargs):
-        if PAGINATION in self.schema:
-            pagination = self.schema[PAGINATION]
-            params.update(pagination.paginate(kwargs.pop("page", None), kwargs.pop("per_page", None)))
-        return params, kwargs
-
-    def _extract_objects(self, body, args):
-        schema_type = self.schema[TYPE]
         if self.method == "GET":
-            if self.route.name in self.route.instance._schema[PROPERTIES]:
-                instance_property = self.route.instance._instance[self.route.name]
-                args.append(instance_property)
-
-        if len(args) == 1:
-            args = args[0]
-        elif len(args) == 0:
-            args = None
-
-        assert isinstance(args, *schema_type), "Expected %s and got %s" % (schema_type, type(args))
-
-        body = args
-
-        return body
-
-    def __call__(self, resolve=True, *args, **kwargs):
-        if not self._resolved:
-            self._resolve_schema()
-
-        params = {}
-        body = []
-        params, kwargs = self._extract_pagination(params, **kwargs)
-        body = self._extract_objects(body, args)
-        url = self.route.generate_url()
-
-        kwargs.update(self.requests_kwargs)
-        response = requests.request(self.method, url=url, params=params, json=body, **kwargs)
-        if response.status_code == 404:
-            raise NotFoundException(url)
-        if resolve:
-            return self._resolve_response(response.json(), params, args, kwargs)
+            params = self._validate_in(kwargs)
         else:
-            return response.json()
+            json = self._validate_in(kwargs)
+        return json, params
 
-    def _resolve_response(self, obj, params, args, kwargs):
-        assert isinstance(obj, *self.target_schema[TYPE])
+    def _resolve_schema(self, client, schema=None, default=None):
+        if not schema is None:
+            if isinstance(schema, dict):
+                if REF in schema:
+                    schema = client.resolve(schema[REF])
 
-        if isinstance(obj, list):
-            if self.schema[PAGINATION]:
-                return LazyPaginatedCollection(obj, params.get("page"), params.get("per_page"), self, *args, **kwargs)
-            else:
-                return LazyCollection(obj, self)
+                for key, value in schema.items():
+                    schema[key] = self._resolve_schema(client, value, value)
+                return schema
+
+        return default
+
+    def _validate(self, schema, obj):
+        if not schema is None:
+            validate(obj, schema)
         return obj
 
-    def __getitem__(self, pos):
-        if not self._resolved:
-            self._resolve_schema()
+    def _validate_in(self, input):
+        return self._validate(self.schema, input)
 
-        if isinstance(pos, tuple):
-            page = pos[0]
-            limit = pos[1]
-        else:
-            page = pos
-            if PAGINATION in self.schema:
-                limit = self.schema[PAGINATION].per_page
-
-        return self(per_page=limit, page=page)
+    def _validate_out(self, out):
+        return self._validate(self.target_schema, out)
 
 
 class Resource:
     client = None
     _schema = None
-    _routes = None
-
-    @classmethod
-    def get(cls, id):
-        instance = cls.__new__(cls)
-        instance.id = id
-        instance._ensure_instance()
-        return instance
-
-    @classmethod
-    def _from_json(cls, json):
-        validate(json, cls.client._schema)
-        id = json[URI].split("/")[-1]
-        instance = cls.__new__(cls)
-        instance.id = id
-        instance._instance = json
-        return instance
+    _instance_routes = None
+    _self_route = None
 
     def __init__(self, id=None, instance=None):
+        self._create_route_proxies()
         self.id = id
         self._instance = instance
         if id is None:  # make a new object
             self._instance = {}
 
-    def __getattr__(self, item):
-        if item in self._schema[PROPERTIES]:
+    def _create_route_proxies(self):
+        for route in self._instance_routes:
+            setattr(self, route.name, RouteProxy(route, self))
+
+    def __getattr__(self, key):
+        if key in self._schema[PROPERTIES]:
             self._ensure_instance()
-            return self._instance.get(item, None)
+            item = self._instance.get(key, None)
+            if isinstance(item, list):
+                return LazyCollection(item, {}, None)
+            else:
+                return self.client.resolve_element(item)
         else:
-            getattr(super(Resource, self), item, self)
+            getattr(super(Resource, self), key, self)
 
     def __setattr__(self, key, value):
         if key in self._schema[PROPERTIES]:
+            property_def = self._schema[PROPERTIES][key]
+            if REF in property_def:
+                self._schema[PROPERTIES][key] = self.client.resolve(property_def[REF], target_schema=self._schema)
+            validate(value,  self._schema[PROPERTIES][key])
             self._ensure_instance()
             self._instance[key] = value
         else:
@@ -251,39 +225,28 @@ class Resource:
 
     def _ensure_instance(self):
         if self._instance is None:
-            self._instance = self.self()
+            self._instance = self.self_route(resolve=False)
 
     def save(self):
         validate(self._instance, self._schema)
         if self.id is None:
-            self.self.create(self._instance)
+            self.self_route.create(self._instance)
         else:
-            self.self.update(self._instance)
+            self.self_route.update(self._instance)
+
+    @property
+    def self_route(self):
+        return RouteProxy(self._self_route, self)
 
     def delete(self):
         if self.id is None:
             #raise some kind of error
             raise RuntimeError()
         else:
-            self.self.destroy()
+            self.self_route.delete()
 
     def __dir__(self):
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
-
-    def resolve(self, path):
-        if path in self.client._url_identifiers:
-            return self.client._url_identifiers[path]._schema
-
-        root, target = path.split("#")
-        if len(root) == 0:
-            schema = self._schema
-        else:
-            klass = self.client._url_identifiers[root+"#"]
-            schema = klass._schema
-
-        base, section, fragment = target.split("/")
-
-        return self._schema_resolver.resolve_fragment(schema[section], fragment)
 
     @classmethod
     def factory(cls, docstring, name, schema, requests_kwargs):
@@ -291,67 +254,54 @@ class Resource:
         resource = type(class_name, (cls, ), {})
         resource.__doc__ = docstring
         resource._schema = schema
-        routes = []
+        resource._instance_routes = []
+        routes = {}
+        class_routes = []
+        self_desc = list(filter(lambda l: l[REL] == SELF, schema[LINKS]))[0]
+
+        self_route = Route(self_desc[HREF], SELF)
+        resource._self_route = self_route
+        self_link = Link(self_route,
+                         method=self_desc[METHOD],
+                         schema=self_desc.get(SCHEMA, {}),
+                         target_schema=self_desc.get(TARGET_SCHEMA, {}),
+                         requests_kwargs=requests_kwargs)
+
+        self_route.default = self_link
+
         for link_desc in schema[LINKS]:
+            if link_desc[REL] == SELF:
+                continue
+            is_instance = link_desc[HREF].startswith(self_route.path)
+
             rel = link_desc[REL].split(":")
             route_name = rel[0]
 
-            if not route_name in routes:
-                routes.append(route_name)
-                route = Route(link_desc[HREF], resource, route_name)
-                setattr(resource, route_name, route)
+            if not route_name in routes.keys():
+
+                route = Route(link_desc[HREF], route_name)
+                routes[route_name] = route
+                if is_instance:
+                    resource._instance_routes.append(route)
+                else:
+                    class_routes.append(route)
+            else:
+                route = routes[route_name]
 
             link = Link(route,
                         method=link_desc[METHOD],
                         schema=link_desc.get(SCHEMA, {}),
                         target_schema=link_desc.get(TARGET_SCHEMA, {}),
                         requests_kwargs=requests_kwargs)
-
-            if route_name == "self":
-                link = Link(route,
-                            method="PUT",
-                            schema=link_desc.get(SCHEMA, {}),
-                            target_schema=link_desc.get(TARGET_SCHEMA, {}),
-                            requests_kwargs=requests_kwargs)
-                setattr(route, "create", link)
-                link = Link(route,
-                            method="PATCH",
-                            schema=link_desc.get(SCHEMA, {}),
-                            target_schema=link_desc.get(TARGET_SCHEMA, {}),
-                            requests_kwargs=requests_kwargs)
-                setattr(route, "update", link)
-
             if len(rel) == 1:
-                setattr(route, "_get", link)
+                route.default = link
             else:
-                setattr(route, rel[1], link)
+                route.links[rel[1]] = link
+
+        for route in class_routes:
+            setattr(resource, route.name, RouteProxy(route, resource))
+
         return resource
 
     def __str__(self):
         return str(self._instance)
-
-
-class Pagination(object):
-    _DEFAULT = "default"
-
-    def __init__(self, schema_definition):
-        self._schema = schema_definition
-        self._properties = self._schema[PROPERTIES]
-
-    @property
-    def per_page(self):
-        return self._properties["per_page"][self._DEFAULT]
-
-    def paginate(self, page=None, per_page=None):
-        if page is None:
-            page = self._properties["page"][self._DEFAULT]
-        if per_page is None:
-            per_page = self._properties["per_page"][self._DEFAULT]
-
-        pagination = {
-            "page": page,
-            "per_page": per_page
-        }
-
-        validate(pagination, self._schema)
-        return pagination

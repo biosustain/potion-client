@@ -12,35 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-SCHEMA_PATH = "/schema"
-DEFAULT_PER_PAGE = 20
+from setuptools import setup, find_packages
+requirements = ['requests', 'jsonschema', ]
 
-
-#HTTP constants
-GET = "GET"
-URL = "url"
-
-#Schema Constants
-PROPERTIES = "properties"
-REF = "$ref"
-DOC = "description"
-LINKS = "links"
-HREF = "href"
-METHOD = "method"
-REL = "rel"
-SCHEMA = "schema"
-DEFINITIONS = "definitions"
-TARGET_SCHEMA = "targetSchema"
-URI = "_uri"
-TYPE = "type"
-ITEMS = "items"
-PAGINATION = "_pagination"
-CLASS = "class"
-SELF = "self"
-
-
-#Expected types
-TYPES = {
-    "array": list,
-    "object": dict
-}
+setup(
+    name='gvc',
+    version='0.0',
+    packages=find_packages(),
+    install_requires=requirements,
+    author='João Cardoso and Lars Schöning',
+    author_email='joaca@biosustain.dtu.dk',
+    description='',
+    license='Apache License Version 2.0',
+    keywords='potion client',
+    url='TBD',
+    classifiers=[
+        'Development Status :: 1 - Alpha',
+        'Topic :: Utilities',
+        'Programming Language :: Python :: 3',
+        'License :: OSI Approved :: Apache Software License'
+    ],
+)

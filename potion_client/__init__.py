@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-import jsonschema
 import requests
 from .constants import *
 from potion_client.exceptions import NotFoundException
@@ -21,21 +20,16 @@ from potion_client.routes import Resource
 
 class Client(object):
     def __init__(self, base_url=None, schema_path="/schema", **requests_kwargs):
-        self._url_identifiers = {}
+        self._resources = {}
         self.base_url = base_url
-        self._schema_path = schema_path
-
+        self._schema_cache = {}
 
         response = requests.get(base_url+schema_path, **requests_kwargs)
         if response.status_code == 404:
             raise NotFoundException()
 
         self._schema = json.loads(response.text)
-        self._schema_cache = {}
-        self._schema_resolver = jsonschema.RefResolver(base_uri=base_url,
-                                                       referrer=self._schema,
-                                                       cache_remote=True,
-                                                       store=self._schema_cache)
+        self._schema_cache[schema_path+"#"] = self._schema
 
         for name, desc in self._schema[PROPERTIES].items():
             class_schema_url = self.base_url + desc[REF]
@@ -44,26 +38,39 @@ class Client(object):
             resource = Resource.factory(desc.get(DOC, ""), name, class_schema, requests_kwargs)
             resource.client = self
             setattr(self, resource.__name__, resource)
-            self._url_identifiers[desc[REF]] = resource
+            self._resources[name] = resource
+            self._schema_cache[desc[REF]] = name
+            self._schema[PROPERTIES][name] = class_schema
 
-    @property
-    def pagination_url(self):
-        return self._schema_path + "#" + "/definitions/" + PAGINATION
+    def resolve_element(self, obj):
+        if isinstance(obj, dict):
+            if URI in obj:
+                path = obj[URI].split("/")
+                id, klass = path[-1], path[-2]
+                return self._resources[klass](id, instance=obj)
+        elif isinstance(obj, str):
+            if obj.startswith("/"):
+                path = obj[URI].split("/")
+                id, klass = path[-1], path[-2]
+                return self._resources[klass](id)
 
-    def resolve(self, path):
-        if path in self._url_identifiers:
-            return self._url_identifiers[path]._schema
+        return obj
 
-        root, target = path.split("#")
-        if len(root) == 0:
-            schema = self._schema
-        elif root == self._schema_path:
-            schema = self._schema
+    def resolve(self, ref, target_schema=None):
+        if ref in self._schema_cache:
+            return self._schema_cache[ref]
+
+        document, path = ref.split("#")
+        if len(document) == 0:
+            if target_schema:
+                schema = target_schema
+            else:
+                schema = self._schema
         else:
-            klass = self._url_identifiers[root+"#"]
-            schema = klass._schema
-        splt = target.split("/")
-        section = splt[-2]
-        fragment = splt[-1]
+            schema = self._schema_cache[document+"#"]
 
-        return self._schema_resolver.resolve_fragment(schema[section], fragment)
+        null, key, fragment = path.split("/")
+        if fragment in schema[key]:
+            return schema[key][fragment]
+        else:
+            return None
