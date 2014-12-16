@@ -20,7 +20,7 @@ class LinkProxy(object):
         self.link = link
 
     def __call__(self, *args, **kwargs):
-        return self.link(self.route_proxy.obj, *args, **kwargs)
+        return self.link(*args, obj=self.route_proxy.obj, **kwargs)
 
     def __getitem__(self, pos):
         if isinstance(pos, tuple):
@@ -51,6 +51,13 @@ class RouteProxy(object):
     def client(self):
         return self.obj.client
 
+    def __getitem__(self, pos):
+        if isinstance(pos, tuple):
+            page = pos[0]
+            limit = pos[1]
+
+        return self(per_page=limit, page=page)
+
 
 class Route(object):
     def __init__(self, path, name):
@@ -60,13 +67,16 @@ class Route(object):
         self.links = {}
 
     def __call__(self, *args, **kwargs):
-        return self.default(None, *args, **kwargs)
+        return self.default(*args, **kwargs)
 
     def generate_url(self, obj):
         base_url = obj.client.base_url
         url = "{base}{path}".format(base=base_url, path=self.path)
         logger.debug("Generated url: %s" % url)
-        return url.format(**self.extract_keys(obj, _string_formatter))
+        url = url.format(**self.extract_keys(obj, _string_formatter))
+        if url.endswith("/"):
+            return url[0:-1]
+        return url
 
     def extract_keys(self, resource, formatter=_string_formatter):
         format_iterator = formatter.parse(self.path)
@@ -100,7 +110,8 @@ class LazyCollectionIterartor(object):
 class LazyCollection(object):
 
     @classmethod
-    def from_url(cls, url, client, **kwargs):
+    def from_url(cls, path, client, **kwargs):
+        url = client.base_url + path
         response = requests.get(url, **kwargs)
         return cls.__new__(cls, (response.json(), response.links, client))
 
@@ -132,14 +143,11 @@ class Link(object):
         self.target_schema = target_schema
         self.request_kwargs = requests_kwargs
 
-    def __call__(self, obj, resolve=True, **kwargs):
+    def __call__(self, *args, obj=None, resolve=True, **kwargs):
         self.schema = self._resolve_schema(obj.client, self.schema)
         url = self.route.generate_url(obj)
-        json, params = self._process_kwargs(**kwargs)
-        print(url)
+        json, params = self._process_args(*args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
-        print(res)
-        print(res.text)
         res_obj = res.json()
         valid_res = self._validate_out(res_obj)
 
@@ -151,13 +159,15 @@ class Link(object):
 
         return obj.client.resolve_element(valid_res)
 
-    def _process_kwargs(self, **kwargs):
+    def _process_args(self, *args, **kwargs):
         json, params = None, None
 
-        if self.method == "GET":
+        params = self._validate_in(kwargs)
+
+        if self.method in ["POST", "PATCH"]:
             params = self._validate_in(kwargs)
-        else:
-            json = self._validate_in(kwargs)
+            json = self._validate_in(args)
+
         return json, params
 
     def _resolve_schema(self, client, schema=None, default=None):
@@ -192,7 +202,7 @@ class Resource:
 
     def __init__(self, id=None, instance=None):
         self._create_route_proxies()
-        self.id = id
+        self._id = id
         self._instance = instance
         if id is None:  # make a new object
             self._instance = {}
@@ -230,9 +240,17 @@ class Resource:
     def save(self):
         validate(self._instance, self._schema)
         if self.id is None:
-            self.self_route.create(self._instance)
+            self._instance = self.self_route.create(self._instance, resolve=False)
         else:
-            self.self_route.update(self._instance)
+            self._instance = self.self_route.update(self._instance, resolve=False)
+
+    @property
+    def id(self):
+        if self._id is None:
+            if self._instance and (URI in self._instance):
+                self._id = self._instance[URI].split("/")[-1]
+        return self._id
+
 
     @property
     def self_route(self):
@@ -268,6 +286,8 @@ class Resource:
                          requests_kwargs=requests_kwargs)
 
         self_route.default = self_link
+        self_route.links["create"] = Link(self_route, method="POST", requests_kwargs=requests_kwargs)
+        self_route.links["update"] = Link(self_route, method="PATCH", requests_kwargs=requests_kwargs)
 
         for link_desc in schema[LINKS]:
             if link_desc[REL] == SELF:
