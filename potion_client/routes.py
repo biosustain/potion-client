@@ -261,7 +261,7 @@ class Resource:
             #raise some kind of error
             raise RuntimeError()
         else:
-            self.self_route.delete()
+            self.self_route.delete(self._instance[URI])
 
     def __dir__(self):
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
