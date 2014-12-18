@@ -1,3 +1,4 @@
+from functools import partial
 import json
 import string
 from jsonschema import validate
@@ -129,7 +130,7 @@ class LazyCollection(object):
 
     def _create_links(self):
         for link_name, link_desc in self.links.items():
-            setattr(self, link_name, lambda: self.from_url(link_desc[URL], self.client, **self.request_kwargs))
+            setattr(self, link_name, partial(self.from_url, link_desc[URL], self.client, **self.request_kwargs))
 
     def __getitem__(self, index):
         item = self.client.resolve_element(self.items[index])
