@@ -18,6 +18,9 @@ DEFAULT_PER_PAGE = 20
 
 #HTTP constants
 GET = "GET"
+POST = "POST"
+PATCH = "PATCH"
+DELETE = "DELETE"
 URL = "url"
 
 #Schema Constants
