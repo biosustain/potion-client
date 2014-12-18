@@ -1,10 +1,11 @@
+import json
 import string
 from jsonschema import validate
 import requests
 from potion_client import utils
 from .constants import *
 import logging
-from potion_client.exceptions import NotFoundException
+from potion_client.exceptions import NotFoundException  
 
 logger = logging.getLogger(__name__)
 logger.level = logging.DEBUG
@@ -113,7 +114,7 @@ class LazyCollection(object):
     def from_url(cls, path, client, **kwargs):
         url = client.base_url + path
         response = requests.get(url, **kwargs)
-        return cls.__new__(cls, (response.json(), response.links, client))
+        return LazyCollection(response.json(), response.links, client, **kwargs)
 
     def __init__(self, items, links, client, **request_kwargs):
         self.items = items
@@ -136,7 +137,7 @@ class LazyCollection(object):
 
 
 class Link(object):
-    def __init__(self, route, method="GET", schema=None, target_schema=None, requests_kwargs=None):
+    def __init__(self, route, method=GET, schema=None, target_schema=None, requests_kwargs=None):
         self.route = route
         self.method = method
         self.schema = schema
@@ -147,7 +148,16 @@ class Link(object):
         self.schema = self._resolve_schema(obj.client, self.schema)
         url = self.route.generate_url(obj)
         json, params = self._process_args(*args, **kwargs)
+        print(url)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
+        print(res)
+        if res.status_code == 400:
+            raise NotFoundException(url)
+        elif res.status_code == 204:
+            return None
+        elif res.status_code > 400:
+            raise RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text))
+
         res_obj = res.json()
         valid_res = self._validate_out(res_obj)
 
@@ -164,11 +174,24 @@ class Link(object):
 
         params = self._validate_in(kwargs)
 
-        if self.method in ["POST", "PATCH"]:
+        if self.method in [POST, PATCH]:
             params = self._validate_in(kwargs)
+            args = self._check_input(args)
             json = self._validate_in(args)
 
         return json, params
+
+    def _check_input(self, obj):
+        if isinstance(obj, (list, tuple)):
+            if len(obj) == 1:
+                return self._check_input(obj[0])
+            else:
+                return [self._check_input(el) for el in obj]
+        else:
+            if isinstance(input, Resource):
+                return obj._instance
+            else:
+                return obj
 
     def _resolve_schema(self, client, schema=None, default=None):
         if not schema is None:
@@ -251,7 +274,6 @@ class Resource:
                 self._id = self._instance[URI].split("/")[-1]
         return self._id
 
-
     @property
     def self_route(self):
         return RouteProxy(self._self_route, self)
@@ -261,7 +283,10 @@ class Resource:
             #raise some kind of error
             raise RuntimeError()
         else:
+            self._ensure_instance()
             self.self_route.delete(self._instance[URI])
+            self._id = None
+            del self._instance[URI]
 
     def __dir__(self):
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
@@ -286,8 +311,9 @@ class Resource:
                          requests_kwargs=requests_kwargs)
 
         self_route.default = self_link
-        self_route.links["create"] = Link(self_route, method="POST", requests_kwargs=requests_kwargs)
-        self_route.links["update"] = Link(self_route, method="PATCH", requests_kwargs=requests_kwargs)
+        self_route.links["create"] = Link(self_route, method=POST, requests_kwargs=requests_kwargs)
+        self_route.links["update"] = Link(self_route, method=PATCH, requests_kwargs=requests_kwargs)
+        self_route.links["delete"] = Link(self_route, method=DELETE, requests_kwargs=requests_kwargs)
 
         for link_desc in schema[LINKS]:
             if link_desc[REL] == SELF:
