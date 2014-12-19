@@ -1,12 +1,28 @@
+# Copyright 2014 Novo Nordisk Foundation Center for Biosustainability, DTU.
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from functools import partial
-import json
+import re
 import string
+from urllib.parse import urlparse
 from jsonschema import validate
 import requests
 from potion_client import utils
 from .constants import *
 import logging
-from potion_client.exceptions import NotFoundException  
+from potion_client.exceptions import NotFoundException
+from potion_client.utils import params_to_dict, ditc_to_params
 
 logger = logging.getLogger(__name__)
 logger.level = logging.DEBUG
@@ -23,13 +39,6 @@ class LinkProxy(object):
 
     def __call__(self, *args, **kwargs):
         return self.link(*args, obj=self.route_proxy.obj, **kwargs)
-
-    def __getitem__(self, pos):
-        if isinstance(pos, tuple):
-            page = pos[0]
-            limit = pos[1]
-
-        return self(per_page=limit, page=page)
 
 
 class RouteProxy(object):
@@ -52,13 +61,6 @@ class RouteProxy(object):
     @property
     def client(self):
         return self.obj.client
-
-    def __getitem__(self, pos):
-        if isinstance(pos, tuple):
-            page = pos[0]
-            limit = pos[1]
-
-        return self(per_page=limit, page=page)
 
 
 class Route(object):
@@ -89,7 +91,7 @@ class Route(object):
         return object_values
 
 
-class LazyCollectionIterartor(object):
+class LazyCollection(object):
 
     def __init__(self, collection):
         self.collection = collection
@@ -108,25 +110,88 @@ class LazyCollectionIterartor(object):
                 raise StopIteration
         return item
 
+    def __iter__(self):
+        if hasattr(self.collection, 'first'):
+            self.collection = self.collection.first()
+        return self
 
-class LazyCollection(object):
+    def __getitem__(self, index):
+        slice_size, current_page, last_page, min_i, max_i, limit_i = self._current_page_limits()
+        if index < 0:
+            pass
+        elif index >= limit_i:
+            raise IndexError("Index out of bounds (%i)" % index)
+        else:
+            page = int(index/slice_size) + 1
+            print(page)
+            if page != current_page:
+                self.collection = self.collection.get_page(page)
+                slice_size, current_page, last_page, min_i, max_i, limit_i = self._current_page_limits()
+
+            print([slice_size, current_page, last_page, min_i, max_i, limit_i])
+            i = index - min_i
+            print(i)
+
+        return self.collection[i]
+
+    def _current_page_limits(self):
+        slice_size = self.collection.slice
+        current_page = self.collection.page
+        last_page = self.collection.last_page
+        if last_page is None:
+            last_page = current_page
+        limit_i = slice_size * last_page
+        min_i = slice_size * (current_page - 1)
+        max_i = min_i + slice_size
+        return slice_size, current_page, last_page, min_i, max_i, limit_i
+
+
+class LazyCollectionSlice(object):
 
     @classmethod
-    def from_url(cls, path, client, **kwargs):
-        url = client.base_url + path
-        response = requests.get(url, **kwargs)
-        return LazyCollection(response.json(), response.links, client, **kwargs)
+    def from_url(cls, path, client, params, **kwargs):
+        url = urlparse(client.base_url + path)
+        params.update(params_to_dict(url.query))
+        url.query = ditc_to_params(params)
+        response = requests.get(url.geturl(), **kwargs)
+        return LazyCollectionSlice(response.json(), response.links, params, client, **kwargs)
 
-    def __init__(self, items, links, client, **request_kwargs):
+    @classmethod
+    def from_params(cls, path, client, params, **kwargs):
+        url = urlparse(client.base_url + path)
+        new_params = params_to_dict(url.query)
+        new_params.update(params)
+        url.query = ditc_to_params(new_params)
+        response = requests.get(url.geturl(), **kwargs)
+        return LazyCollectionSlice(response.json(), response.links, params, client, **kwargs)
+
+    def __init__(self, items, links, client, params, **request_kwargs):
         self.items = items
         self.links = links
         self.request_kwargs = request_kwargs
         self.client = client
+        self.params = params
+        self.page = None
+        self.last_page = None
+        self.slice = None
+
         if not self.links is None:
             self._create_links()
+            self._parse_links()
 
-    def __iter__(self):
-        return LazyCollectionIterartor(self)
+    def _parse_links(self):
+        if 'self' in self.links:
+            link = self.links['self']
+            parse_url = urlparse(link[URL])
+            params = params_to_dict(parse_url.query)
+            self.params['page'] = self.page = int(params['page'])
+            self.params['per_page'] = self.slice = int(params['per_page'])
+
+        if 'last' in self.links:
+            link = self.links['last']
+            parse_url = urlparse(link[URL])
+            params = params_to_dict(parse_url.query)
+            self.last_page = int(params['page'])
 
     def _create_links(self):
         for link_name, link_desc in self.links.items():
@@ -135,6 +200,11 @@ class LazyCollection(object):
     def __getitem__(self, index):
         item = self.client.resolve_element(self.items[index])
         return item
+
+    def get_page(self, page):
+        self_link = self.links['self']
+        params = {"page": page}
+        return self.from_params(self_link[URL], self.client, params, **self.request_kwargs)
 
 
 class Link(object):
@@ -149,9 +219,7 @@ class Link(object):
         self.schema = self._resolve_schema(obj.client, self.schema)
         url = self.route.generate_url(obj)
         json, params = self._process_args(*args, **kwargs)
-        print(url)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
-        print(res)
         if res.status_code == 400:
             raise NotFoundException(url)
         elif res.status_code == 204:
@@ -166,7 +234,8 @@ class Link(object):
             return valid_res
 
         if isinstance(valid_res, list):
-            return LazyCollection(valid_res, res.links, obj.client, **self.request_kwargs)
+            collection = LazyCollectionSlice(valid_res, res.links, obj.client, params, **self.request_kwargs)
+            return LazyCollection(collection)
 
         return obj.client.resolve_element(valid_res)
 
@@ -211,6 +280,14 @@ class Link(object):
             validate(obj, schema)
         return obj
 
+    def _validate_params(self, input):
+        self._validate(self.schema, input)
+        for param in self.schema[PROPERTIES]:
+            if 'default ' in self.schema[PROPERTIES][param]:
+                if not param in input:
+                    input[param] = self.schema[PROPERTIES][param]['default']
+        return input
+
     def _validate_in(self, input):
         return self._validate(self.schema, input)
 
@@ -240,7 +317,7 @@ class Resource:
             self._ensure_instance()
             item = self._instance.get(key, None)
             if isinstance(item, list):
-                return LazyCollection(item, {}, None)
+                return LazyCollectionSlice(item, {}, None)
             else:
                 return self.client.resolve_element(item)
         else:

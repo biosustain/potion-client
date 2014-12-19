@@ -16,3 +16,26 @@
 def camelize(string):
     assert isinstance(string, str)
     return "".join([part.capitalize() for part in string.replace("-", "_").split("_")])
+
+
+def params_to_dict(params_string):
+    dict = {}
+    for part in params_string.split("&"):
+        key, value = part.split("=")
+        if not key in dict:
+            dict[key] = []
+        dict[key].append(value)
+
+    for key in dict.keys():
+        if len(dict[key]) == 1:
+            dict[key] = dict[key][0]
+
+    return dict
+
+
+def ditc_to_params(dict):
+    s = []
+    for key, value in dict.items():
+        s.append("%s=%s" % (key, value))
+
+    return "&".join(s)
