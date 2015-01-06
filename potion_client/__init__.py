@@ -69,7 +69,6 @@ class Client(object):
         else:
             schema = self._schema_cache[document+"#"]
 
-        print(path)
         null, key, fragment = path.split("/")
         if fragment in schema[key]:
             return schema[key][fragment]
