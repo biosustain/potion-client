@@ -242,28 +242,27 @@ class Link(object):
         return obj.client.resolve_element(valid_res)
 
     def _process_args(self, *args, **kwargs):
+        print([args, kwargs])
         json, params = None, None
 
-        params = self._validate_in(kwargs)
-
         if self.method in [POST, PATCH]:
-            params = self._validate_in(kwargs)
             args = self._check_input(args)
             json = self._validate_in(args)
+        else:
+            params = self._validate_in(kwargs)
 
         return json, params
 
     def _check_input(self, obj):
-        if isinstance(obj, (list, tuple)):
+        if isinstance(obj, Resource):
+            return obj._instance
+        elif isinstance(obj, (list, tuple)):
             if len(obj) == 1:
                 return self._check_input(obj[0])
             else:
                 return [self._check_input(el) for el in obj]
         else:
-            if isinstance(input, Resource):
-                return obj._instance
-            else:
-                return obj
+            return obj
 
     def _resolve_schema(self, client, fragment=None, schema=None, default=None):
         if not fragment is None:
