@@ -39,7 +39,7 @@ class Client(object):
             resource.client = self
             setattr(self, resource.__name__, resource)
             self._resources[name] = resource
-            self._schema_cache[desc[REF]] = name
+            self._schema_cache[desc[REF]] = resource._schema
             self._schema[PROPERTIES][name] = class_schema
 
     def resolve_element(self, obj):
@@ -69,6 +69,7 @@ class Client(object):
         else:
             schema = self._schema_cache[document+"#"]
 
+        print(path)
         null, key, fragment = path.split("/")
         if fragment in schema[key]:
             return schema[key][fragment]
