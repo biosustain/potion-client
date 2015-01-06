@@ -13,9 +13,8 @@
 # limitations under the License.
 
 from functools import partial
-import re
 import string
-from urllib.parse import urlparse
+from urllib.parse import urlparse, ParseResult
 from jsonschema import validate
 import requests
 from potion_client import utils
@@ -123,14 +122,11 @@ class LazyCollection(object):
             raise IndexError("Index out of bounds (%i)" % index)
         else:
             page = int(index/slice_size) + 1
-            print(page)
             if page != current_page:
                 self.collection = self.collection.get_page(page)
                 slice_size, current_page, last_page, min_i, max_i, limit_i = self._current_page_limits()
 
-            print([slice_size, current_page, last_page, min_i, max_i, limit_i])
             i = index - min_i
-            print(i)
 
         return self.collection[i]
 
@@ -152,18 +148,20 @@ class LazyCollectionSlice(object):
     def from_url(cls, path, client, params, **kwargs):
         url = urlparse(client.base_url + path)
         params.update(params_to_dict(url.query))
-        url.query = ditc_to_params(params)
+        query = ditc_to_params(params)
+        url = ParseResult(url.scheme, url.netloc, url.path, url.params, query, url.fragment)
         response = requests.get(url.geturl(), **kwargs)
-        return LazyCollectionSlice(response.json(), response.links, params, client, **kwargs)
+        return LazyCollectionSlice(response.json(), response.links, client, params, **kwargs)
 
     @classmethod
     def from_params(cls, path, client, params, **kwargs):
         url = urlparse(client.base_url + path)
         new_params = params_to_dict(url.query)
         new_params.update(params)
-        url.query = ditc_to_params(new_params)
+        query = ditc_to_params(new_params)
+        url = ParseResult(url.scheme, url.netloc, url.path, url.params, query, url.fragment)
         response = requests.get(url.geturl(), **kwargs)
-        return LazyCollectionSlice(response.json(), response.links, params, client, **kwargs)
+        return LazyCollectionSlice(response.json(), response.links, client, params, **kwargs)
 
     def __init__(self, items, links, client, params, **request_kwargs):
         self.items = items
@@ -176,8 +174,8 @@ class LazyCollectionSlice(object):
         self.slice = None
 
         if not self.links is None:
-            self._create_links()
             self._parse_links()
+            self._create_links()
 
     def _parse_links(self):
         if 'self' in self.links:
@@ -195,7 +193,7 @@ class LazyCollectionSlice(object):
 
     def _create_links(self):
         for link_name, link_desc in self.links.items():
-            setattr(self, link_name, partial(self.from_url, link_desc[URL], self.client, **self.request_kwargs))
+            setattr(self, link_name, partial(self.from_url, link_desc[URL], self.client, self.params, **self.request_kwargs))
 
     def __getitem__(self, index):
         item = self.client.resolve_element(self.items[index])
@@ -218,6 +216,7 @@ class Link(object):
     def __call__(self, *args, obj=None, resolve=True, **kwargs):
         self.schema = self._resolve_schema(obj.client, self.schema)
         url = self.route.generate_url(obj)
+        print(url)
         json, params = self._process_args(*args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
         if res.status_code == 400:
@@ -228,6 +227,7 @@ class Link(object):
             raise RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text))
 
         res_obj = res.json()
+        self.target_schema = self._resolve_schema(obj.client, self.target_schema)
         valid_res = self._validate_out(res_obj)
 
         if not resolve:
@@ -268,10 +268,13 @@ class Link(object):
             if isinstance(schema, dict):
                 if REF in schema:
                     schema = client.resolve(schema[REF])
+                    return self._resolve_schema(client, schema, schema)
 
                 for key, value in schema.items():
                     schema[key] = self._resolve_schema(client, value, value)
                 return schema
+            elif isinstance(schema, list):
+                return [self._resolve_schema(client, value, value) for value in schema]
 
         return default
 
