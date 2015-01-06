@@ -214,9 +214,11 @@ class Link(object):
         self.request_kwargs = requests_kwargs
 
     def __call__(self, *args, obj=None, resolve=True, **kwargs):
-        self.schema = self._resolve_schema(obj.client, self.schema)
+        obj_schema = None
+        if hasattr(obj, "_schema"):
+            obj_schema = obj._schema
+        self.schema = self._resolve_schema(obj.client, self.schema, obj_schema, {})
         url = self.route.generate_url(obj)
-        print(url)
         json, params = self._process_args(*args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
         if res.status_code == 400:
@@ -227,7 +229,7 @@ class Link(object):
             raise RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text))
 
         res_obj = res.json()
-        self.target_schema = self._resolve_schema(obj.client, self.target_schema)
+        self.target_schema = self._resolve_schema(obj.client, self.target_schema, obj_schema, {})
         valid_res = self._validate_out(res_obj)
 
         if not resolve:
@@ -263,18 +265,18 @@ class Link(object):
             else:
                 return obj
 
-    def _resolve_schema(self, client, schema=None, default=None):
-        if not schema is None:
-            if isinstance(schema, dict):
-                if REF in schema:
-                    schema = client.resolve(schema[REF])
-                    return self._resolve_schema(client, schema, schema)
-
-                for key, value in schema.items():
-                    schema[key] = self._resolve_schema(client, value, value)
-                return schema
-            elif isinstance(schema, list):
-                return [self._resolve_schema(client, value, value) for value in schema]
+    def _resolve_schema(self, client, fragment=None, schema=None, default=None):
+        if not fragment is None:
+            if isinstance(fragment, dict):
+                if REF in fragment:
+                    fragment = client.resolve(fragment[REF], target_schema=schema)
+                    fragment = self._resolve_schema(client, fragment, schema, fragment)
+                else:
+                    for key, value in fragment.items():
+                        fragment[key] = self._resolve_schema(client, value, schema, value)
+                return fragment
+            elif isinstance(fragment, list):
+                return [self._resolve_schema(client, value, schema, value) for value in fragment]
 
         return default
 
