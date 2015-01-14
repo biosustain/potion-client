@@ -217,7 +217,7 @@ class Link(object):
         obj_schema = None
         if hasattr(obj, "_schema"):
             obj_schema = obj._schema
-        self.schema = self._resolve_schema(obj.client, self.schema, obj_schema, {})
+        self.schema = {} #self._resolve_schema(obj.client, self.schema, obj_schema, {})
         url = self.route.generate_url(obj)
         json, params = self._process_args(*args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
@@ -229,7 +229,7 @@ class Link(object):
             raise RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text))
 
         res_obj = res.json()
-        self.target_schema = self._resolve_schema(obj.client, self.target_schema, obj_schema, {})
+        self.target_schema = {} #self._resolve_schema(obj.client, self.target_schema, obj_schema, {})
         valid_res = self._validate_out(res_obj)
 
         if not resolve:
@@ -345,9 +345,9 @@ class Resource:
     def save(self):
         validate(self._instance, self._schema)
         if self.id is None:
-            self._instance = self.self_route.create(self._instance, resolve=False)
+            self._instance = self.create(self._instance, resolve=False)
         else:
-            self._instance = self.self_route.update(self._instance, resolve=False)
+            self._instance = self.update(self._instance, resolve=False)
 
     @property
     def id(self):
@@ -366,7 +366,7 @@ class Resource:
             raise RuntimeError()
         else:
             self._ensure_instance()
-            self.self_route.delete(self._instance[URI])
+            self.delete(self._instance[URI])
             self._id = None
             del self._instance[URI]
 
@@ -374,12 +374,15 @@ class Resource:
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
 
     @classmethod
-    def factory(cls, docstring, name, schema, requests_kwargs):
+    def factory(cls, docstring, name, schema, requests_kwargs, client):
         class_name = utils.camelize(name)
+
         resource = type(class_name, (cls, ), {})
         resource.__doc__ = docstring
         resource._schema = schema
+        resource.client = client
         resource._instance_routes = []
+
         routes = {}
         class_routes = []
         self_desc = list(filter(lambda l: l[REL] == SELF, schema[LINKS]))[0]
@@ -393,9 +396,9 @@ class Resource:
                          requests_kwargs=requests_kwargs)
 
         self_route.default = self_link
-        self_route.links["create"] = Link(self_route, method=POST, requests_kwargs=requests_kwargs)
-        self_route.links["update"] = Link(self_route, method=PATCH, requests_kwargs=requests_kwargs)
-        self_route.links["delete"] = Link(self_route, method=DELETE, requests_kwargs=requests_kwargs)
+        # self_route.links["create"] = Link(self_route, method=POST, requests_kwargs=requests_kwargs)
+        # self_route.links["update"] = Link(self_route, method=PATCH, requests_kwargs=requests_kwargs)
+        # self_route.links["delete"] = Link(self_route, method=DELETE, requests_kwargs=requests_kwargs)
 
         for link_desc in schema[LINKS]:
             if link_desc[REL] == SELF:

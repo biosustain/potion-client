@@ -19,7 +19,7 @@ from potion_client.routes import Resource
 
 
 class Client(object):
-    def __init__(self, base_url=None, schema_path="/schema", **requests_kwargs):
+    def __init__(self, base_url="http://localhost", schema_path="/schema", **requests_kwargs):
         self._resources = {}
         self.base_url = base_url
         self._schema_cache = {}
@@ -27,16 +27,14 @@ class Client(object):
         response = requests.get(base_url+schema_path, **requests_kwargs)
         if response.status_code == 404:
             raise NotFoundException()
-
-        self._schema = json.loads(response.text)
+        self._schema = response.json()
         self._schema_cache[schema_path+"#"] = self._schema
 
         for name, desc in self._schema[PROPERTIES].items():
             class_schema_url = self.base_url + desc[REF]
             response = requests.get(class_schema_url, **requests_kwargs)
-            class_schema = json.loads(response.text)
-            resource = Resource.factory(desc.get(DOC, ""), name, class_schema, requests_kwargs)
-            resource.client = self
+            class_schema = response.json()
+            resource = Resource.factory(desc.get(DOC, ""), name, class_schema, requests_kwargs, self)
             setattr(self, resource.__name__, resource)
             self._resources[name] = resource
             self._schema_cache[desc[REF]] = class_schema
@@ -63,6 +61,8 @@ class Client(object):
     def resolve(self, ref, target_schema=None):
         if ref in self._schema_cache:
             return self._schema_cache[ref]
+        if ref == "#":
+            return target_schema or self._schema
 
         document, path = ref.split("#")
         if len(document) == 0:
