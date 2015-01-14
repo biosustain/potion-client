@@ -13,15 +13,19 @@
 # limitations under the License.
 from httmock import HTTMock
 from potion_client import Client
-from tests import MockAPITestCase
+from pprint import pprint
+from potion_client_testing import MockAPITestCase
 
 
-class TestCreateBasicInstance(MockAPITestCase):
+class CreateClientTestCase(MockAPITestCase):
 
     def setUp(self):
-        super(TestCreateBasicInstance, self).setUp()
+        super(CreateClientTestCase, self).setUp()
+        print(self.app.url_map)
 
     def test_init_client(self):
         with HTTMock(self.get_mock):
-            self.client = Client()
+            c = Client()
+            self.assertSetEqual(set(c._schema['properties'].keys()), set(['foo', 'bar', 'baz']))
+            pprint(c._schema)
 

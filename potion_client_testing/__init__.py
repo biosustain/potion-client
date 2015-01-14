@@ -11,59 +11,70 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 from flask import Flask
 from flask_testing import TestCase
 from flask_potion import fields, Api
 from flask_potion.resource import ModelResource
 from flask_sqlalchemy import SQLAlchemy
+import requests
 from sqlalchemy.orm import backref
-from tests import ApiClient
-from httmock import urlmatch, response
+from httmock import urlmatch
 
 
-class MockResponseTool():
-    def __init__(self, client):
-        self.client = client
+class MockResponseTool(object):
 
-    @urlmatch(netloc='*', method="GET")
+    encoding = "utf-8"
+
+    @urlmatch(netloc='.*', method="GET", path=".*")
     def get_mock(self, url, request):
-        self.reply(self.client.get(url))
+        return self.reply(self.client.get(url.path), request)
 
-    @urlmatch(netloc='*', method="POST")
+    @urlmatch(netloc='.*', method="POST", path=".*")
     def post_mock(self, url, request):
-        self.reply(self.client.post(url))
+        body = json.loads(request.body)
+        return self.reply(self.client.post(url.path, data=body), request)
 
-    @urlmatch(netloc='*', method="PATCH")
+    @urlmatch(netloc='.*', method="PATCH", path=".*")
     def patch_mock(self, url, request):
-        self.reply(self.client.patch(url))
+        body = json.loads(request.body)
+        return self.reply(self.client.patch(url.path, data=body), request)
 
-    @urlmatch(netloc='*', method="DELETE")
+    @urlmatch(netloc='.*', method="DELETE", path=".*")
     def delete_mock(self, url, request):
-        self.reply(self.client.delete(url))
+        return self.reply(self.client.delete(url.path), request)
 
-    def reply(self, res):
-        return response(res.status_code, res.content, res.headers)
+    def reply(self, response, request):
+        content = "".join([b.decode(self.encoding) for b in response.response])
+
+        res = requests.Response()
+        res._content = content.encode(self.encoding)
+        res._content_consumed = content
+        res.status_code = response.status_code
+        res.encoding = self.encoding
+        res.headers = request.headers
+        return res
 
 
-class MockAPITestCase(TestCase, MockResponseTool):
+class MockAPITestCase(MockResponseTool, TestCase):
 
     def create_app(self):
         app = Flask(__name__)
+        app.config['SQLALCHEMY_ENGINE'] = 'sqlite://'
         app.secret_key = 'XXX'
-        app.test_client_class = ApiClient
         app.debug = True
         return app
 
     def setUp(self):
         super(MockAPITestCase, self).setUp()
-        app = self.create_app()
-        self.api = Api(app)
-        self.sa = sa = SQLAlchemy(app)
+        self.api = Api(self.app)
+        self.sa = sa = SQLAlchemy(self.app)
 
         class Foo(sa.Model):
             id = sa.Column(sa.Integer, primary_key=True)
             attr1 = sa.Column(sa.String, nullable=False)
             attr2 = sa.Column(sa.String)
+            bar = sa.relationship("Baz", uselist=False, backref="foo")
 
         class Bar(sa.Model):
             id = sa.Column(sa.Integer, primary_key=True)
@@ -71,12 +82,16 @@ class MockAPITestCase(TestCase, MockResponseTool):
             foo_id = sa.Column(sa.Integer, sa.ForeignKey(Foo.id), nullable=False)
             foo = sa.relationship(Foo, backref=backref('bars', lazy='dynamic'))
 
+        class Baz(sa.Model):
+            id = sa.Column(sa.Integer, primary_key=True)
+            foo_id = sa.Column(sa.Integer, sa.ForeignKey(Foo.id), nullable=False)
+
         sa.create_all()
 
         class ResourceFoo(ModelResource):
             class Schema:
-                bar = fields.ToMany("bar")
-
+                bars = fields.ToMany("bar")
+                baz = fields.ToOne("baz")
             class Meta:
                 model = Foo
 
@@ -87,8 +102,16 @@ class MockAPITestCase(TestCase, MockResponseTool):
             class Meta:
                 model = Bar
 
+        class ResourceBaz(ModelResource):
+            class Schema:
+                foo = fields.ToOne(ResourceFoo)
+
+            class Meta:
+                model = Baz
+
         self.api.add_resource(ResourceFoo)
         self.api.add_resource(ResourceBar)
+        self.api.add_resource(ResourceBaz)
 
     def tearDown(self):
         self.sa.drop_all()

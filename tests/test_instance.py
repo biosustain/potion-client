@@ -11,3 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from httmock import HTTMock
+from potion_client import Client
+from potion_client_testing import MockAPITestCase
+
+
+class InstanceTestCase(MockAPITestCase):
+
+    def setUp(self):
+        super(InstanceTestCase, self).setUp()
+        with HTTMock(self.get_mock):
+            self.potion_client = Client()
+
+    def test_create_foo(self):
+        with HTTMock(self.post_mock):
+            foo = self.potion_client.Foo()
+            foo.attr1 = "1"
+            foo.attr2 = "2"
+            foo.save()
+            print(foo._instance)
+            self.assertEqual(foo, {"_uri": "/foo/1"})
+
