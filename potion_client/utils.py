@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import string
 
 
 def camelize(string):
@@ -39,3 +40,8 @@ def ditc_to_params(dict):
         s.append("%s=%s" % (key, value))
 
     return "&".join(s)
+
+
+def extract_keys(a_string, formatter=string.Formatter()):
+    format_iterator = formatter.parse(a_string)
+    return [t[1] for t in format_iterator if not t[1] is None]

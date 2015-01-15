@@ -21,7 +21,7 @@ from potion_client import utils
 from .constants import *
 import logging
 from potion_client.exceptions import NotFoundException
-from potion_client.utils import params_to_dict, ditc_to_params
+from potion_client.utils import params_to_dict, ditc_to_params, extract_keys
 
 logger = logging.getLogger(__name__)
 logger.level = logging.DEBUG
@@ -31,59 +31,31 @@ _string_formatter = string.Formatter()
 
 
 class LinkProxy(object):
-    def __init__(self, route_proxy, link):
+    def __init__(self, link, object):
         assert isinstance(link, (Link, type(None))), "Invalid link type (%s) for proxy" % type(link)
-        self.route_proxy = route_proxy
+        assert isinstance(object, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(object)
         self.link = link
+        self.object = object
 
     def __call__(self, *args, **kwargs):
-        return self.link(*args, obj=self.route_proxy.obj, **kwargs)
+        return self.link(*args, obj=self.object, **kwargs)
 
-
-class RouteProxy(object):
-    def __init__(self, route, obj):
-        assert isinstance(route, Route), "Invalid route type (%s) for proxy" % type(route)
-        assert isinstance(obj, (Resource, type)), "Invalid object type (%s) for proxy" % type(obj)
-        self.route = route
-        self.obj = obj
-        self.default = None
-        self._create_links_attributes()
-
-    def _create_links_attributes(self):
-        for link_name, link in self.route.links.items():
-            setattr(self, link_name, LinkProxy(self, link))
-        self.default = LinkProxy(self, self.route.default)
-
-    def __call__(self, *args, **kwargs):
-        return self.default(*args, **kwargs)
-
-    @property
-    def client(self):
-        return self.obj.client
+    def __repr__(self):
+        return "[Link %s '%s']" % (self.link.method, self.link.route.path)
 
 
 class Route(object):
-    def __init__(self, path, name):
+    def __init__(self, path):
         self.default = None
         self.path = path
-        self.name = name
-        self.links = {}
+        self.keys = extract_keys(path)
 
-    def __call__(self, *args, **kwargs):
-        return self.default(*args, **kwargs)
-
-    def generate_url(self, obj):
-        base_url = obj.client.base_url
-        url = "{base}{path}".format(base=base_url, path=self.path)
-        logger.debug("Generated url: %s" % url)
-        url = url.format(**self.extract_keys(obj, _string_formatter))
-        if url.endswith("/"):
-            return url[0:-1]
-        return url
+    @property
+    def is_instance(self):
+        return len(self.keys) > 0
 
     def extract_keys(self, resource, formatter=_string_formatter):
-        format_iterator = formatter.parse(self.path)
-        object_values = dict([(t[1], getattr(resource, t[1])) for t in format_iterator if not t[1] is None])
+        object_values = dict([(key, getattr(resource, key)) for key in self.keys])
         for key, val in object_values.items():
             if val is None:
                 object_values[key] = ""
@@ -218,7 +190,7 @@ class Link(object):
         if hasattr(obj, "_schema"):
             obj_schema = obj._schema
         self.schema = {} #self._resolve_schema(obj.client, self.schema, obj_schema, {})
-        url = self.route.generate_url(obj)
+        url = self.generate_url(obj, self.route)
         json, params = self._process_args(*args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
         if res.status_code == 400:
@@ -241,8 +213,17 @@ class Link(object):
 
         return obj.client.resolve_element(valid_res)
 
+    def generate_url(self, obj, route):
+        base_url = obj.client.base_url
+        url = "{base}{path}".format(base=base_url, path=route.path)
+        logger.debug("Generated url: %s" % url)
+        if isinstance(obj, Resource):
+            url = url.format({k:getattr(obj, k, "") for k in self.keys})
+        if url.endswith("/"):
+            return url[0:-1]
+        return url
+
     def _process_args(self, *args, **kwargs):
-        print([args, kwargs])
         json, params = None, None
 
         if self.method in [POST, PATCH]:
@@ -298,23 +279,30 @@ class Link(object):
     def _validate_out(self, out):
         return self._validate(self.target_schema, out)
 
+    def __repr__(self):
+        return "[Link %s '%s']" % (self.method, self.route.path)
+
 
 class Resource:
     client = None
     _schema = None
-    _instance_routes = None
+    _instance_links = None
     _self_route = None
 
     def __init__(self, id=None, instance=None):
-        self._create_route_proxies()
+        self._create_proxies()
         self._id = id
         self._instance = instance
         if id is None:  # make a new object
             self._instance = {}
 
-    def _create_route_proxies(self):
-        for route in self._instance_routes:
-            setattr(self, route.name, RouteProxy(route, self))
+    def _create_proxies(self):
+        for name, link in self._instance_links.items():
+            setattr(self, name, LinkProxy(link, self))
+
+    @property
+    def properties(self):
+        return self._schema.get(PROPERTIES, {})
 
     def __getattr__(self, key):
         if key in self._schema[PROPERTIES]:
@@ -345,9 +333,10 @@ class Resource:
     def save(self):
         validate(self._instance, self._schema)
         if self.id is None:
-            self._instance = self.create(self._instance, resolve=False)
+            print(self.create)
+            self._instance = self.create(self, resolve=False)
         else:
-            self._instance = self.update(self._instance, resolve=False)
+            self._instance = self.update(self, resolve=False)
 
     @property
     def id(self):
@@ -355,20 +344,6 @@ class Resource:
             if self._instance and (URI in self._instance):
                 self._id = self._instance[URI].split("/")[-1]
         return self._id
-
-    @property
-    def self_route(self):
-        return RouteProxy(self._self_route, self)
-
-    def delete(self):
-        if self.id is None:
-            #raise some kind of error
-            raise RuntimeError()
-        else:
-            self._ensure_instance()
-            self.delete(self._instance[URI])
-            self._id = None
-            del self._instance[URI]
 
     def __dir__(self):
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
@@ -381,56 +356,27 @@ class Resource:
         resource.__doc__ = docstring
         resource._schema = schema
         resource.client = client
-        resource._instance_routes = []
+        resource._instance_links = {}
 
         routes = {}
-        class_routes = []
-        self_desc = list(filter(lambda l: l[REL] == SELF, schema[LINKS]))[0]
-
-        self_route = Route(self_desc[HREF], SELF)
-        resource._self_route = self_route
-        self_link = Link(self_route,
-                         method=self_desc[METHOD],
-                         schema=self_desc.get(SCHEMA, {}),
-                         target_schema=self_desc.get(TARGET_SCHEMA, {}),
-                         requests_kwargs=requests_kwargs)
-
-        self_route.default = self_link
-        # self_route.links["create"] = Link(self_route, method=POST, requests_kwargs=requests_kwargs)
-        # self_route.links["update"] = Link(self_route, method=PATCH, requests_kwargs=requests_kwargs)
-        # self_route.links["delete"] = Link(self_route, method=DELETE, requests_kwargs=requests_kwargs)
 
         for link_desc in schema[LINKS]:
-            if link_desc[REL] == SELF:
-                continue
-            is_instance = link_desc[HREF].startswith(self_route.path)
-
-            rel = link_desc[REL].split(":")
-            route_name = rel[0]
-
-            if not route_name in routes.keys():
-
-                route = Route(link_desc[HREF], route_name)
-                routes[route_name] = route
-                if is_instance:
-                    resource._instance_routes.append(route)
-                else:
-                    class_routes.append(route)
+            if link_desc[HREF] in routes:
+                route = routes[link_desc[HREF]]
             else:
-                route = routes[route_name]
+                route = Route(link_desc[HREF])
+                routes[link_desc[HREF]] = route
 
             link = Link(route,
                         method=link_desc[METHOD],
                         schema=link_desc.get(SCHEMA, {}),
                         target_schema=link_desc.get(TARGET_SCHEMA, {}),
                         requests_kwargs=requests_kwargs)
-            if len(rel) == 1:
-                route.default = link
-            else:
-                route.links[rel[1]] = link
 
-        for route in class_routes:
-            setattr(resource, route.name, RouteProxy(route, resource))
+            if route.is_instance:
+                resource._instance_links[link_desc[REL]] = link
+            else:
+                setattr(resource, link_desc[REL], LinkProxy(link, resource))
 
         return resource
 
