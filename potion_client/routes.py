@@ -20,7 +20,7 @@ import requests
 from potion_client import utils
 from .constants import *
 import logging
-from potion_client.exceptions import NotFoundException
+from potion_client.exceptions import NotFoundException, BadRequestException
 from potion_client.utils import params_to_dict, ditc_to_params, extract_keys
 
 logger = logging.getLogger(__name__)
@@ -193,8 +193,11 @@ class Link(object):
         url = self.generate_url(obj, self.route)
         json, params = self._process_args(*args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
-        if res.status_code == 400:
+        if res.status_code == 404:
             raise NotFoundException(url)
+        elif res.status_code == 400:
+            print(res.text)
+            raise BadRequestException(url)
         elif res.status_code == 204:
             return None
         elif res.status_code > 400:
