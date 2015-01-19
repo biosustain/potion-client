@@ -13,6 +13,7 @@
 # limitations under the License.
 import json
 from flask import Flask
+from flask.testing import FlaskClient
 from flask_testing import TestCase
 from flask_potion import fields, Api
 from flask_potion.resource import ModelResource
@@ -20,6 +21,21 @@ from flask_sqlalchemy import SQLAlchemy
 import requests
 from sqlalchemy.orm import backref
 from httmock import urlmatch
+
+
+class ApiClient(FlaskClient):
+    def open(self, *args, **kw):
+        """
+        Sends HTTP Authorization header with  the ``HTTP_AUTHORIZATION`` config value
+        unless :param:`authorize` is ``False``.
+        """
+        headers = kw.pop('headers', [])
+
+        if 'data' in kw and (kw.pop('force_json', False) or not isinstance(kw['data'], str)):
+            kw['data'] = json.dumps(kw['data'])
+            kw['content_type'] = 'application/json'
+
+        return super(ApiClient, self).open(*args, headers=headers, **kw)
 
 
 class MockResponseTool(object):
@@ -33,11 +49,12 @@ class MockResponseTool(object):
     @urlmatch(netloc='.*', method="POST", path=".*")
     def post_mock(self, url, request):
         body = json.loads(request.body)
-        print(url.path, "[%s %s]" % (type(body), body))
+        print(body)
         return self.reply(self.client.post(url.path, data=body), request)
 
     @urlmatch(netloc='.*', method="PATCH", path=".*")
     def patch_mock(self, url, request):
+        print(request.body)
         body = json.loads(request.body)
         return self.reply(self.client.patch(url.path, data=body), request)
 
@@ -61,7 +78,7 @@ class MockAPITestCase(MockResponseTool, TestCase):
     def create_app(self):
         app = Flask(__name__)
         app.config['SQLALCHEMY_ENGINE'] = 'sqlite://'
-        app.secret_key = 'XXX'
+        app.test_client_class = ApiClient
         app.debug = True
         return app
 
@@ -91,7 +108,8 @@ class MockAPITestCase(MockResponseTool, TestCase):
         class ResourceFoo(ModelResource):
             class Schema:
                 bars = fields.ToMany("bar")
-                baz = fields.ToOne("baz")
+                baz = fields.ToOne("baz", nullable=True)
+
             class Meta:
                 model = Foo
 

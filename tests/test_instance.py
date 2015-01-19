@@ -23,13 +23,41 @@ class InstanceTestCase(MockAPITestCase):
         super(InstanceTestCase, self).setUp()
         with HTTMock(self.get_mock):
             self.potion_client = Client()
+            self.foo = self.potion_client.Foo()
+            self.foo.attr1 = "value1"
+            self.foo.attr2 = "value2"
+            self.foo.bars = []
 
     def test_create_foo(self):
         with HTTMock(self.post_mock):
-            foo = self.potion_client.Foo()
-            foo.attr1 = "value1"
-            foo.attr2 = "value2"
-            foo.save()
-            print(foo._instance)
-            self.assertEqual(foo, {"_uri": "/foo/1"})
+            self.foo.save()
+            self.assertEqual(self.foo._instance, {"$uri": "/foo/1",
+                                                  "attr1": "value1",
+                                                  "attr2": "value2",
+                                                  "bars": [],
+                                                  "baz": None})
+
+    def test_add_instance(self):
+        with HTTMock(self.post_mock):
+            bar = self.potion_client.Bar()
+            bar.attr1 = 5
+            self.foo.save()
+            bar.foo = self.foo
+            bar.save()
+
+    def test_change_foo(self):
+        with HTTMock(self.post_mock, self.patch_mock):
+            self.foo.save()
+            self.foo.attr1 = "value3"
+            self.foo.save()
+            self.assertEqual(self.foo._instance, {"$uri": "/foo/1",
+                                                  "attr1": "value1",
+                                                  "attr2": "value3",
+                                                  "bars": [],
+                                                  "baz": None})
+
+    def test_delete_foo(self):
+        with HTTMock(self.delete_mock, self.post_mock):
+            self.foo.save()
+            self.foo.destroy()
 

@@ -21,7 +21,7 @@ from potion_client import utils
 from .constants import *
 import logging
 from potion_client.exceptions import NotFoundException, BadRequestException
-from potion_client.utils import params_to_dict, ditc_to_params, extract_keys
+from potion_client.utils import params_to_dict, dictionary_to_params, extract_keys
 
 logger = logging.getLogger(__name__)
 logger.level = logging.DEBUG
@@ -31,11 +31,11 @@ _string_formatter = string.Formatter()
 
 
 class LinkProxy(object):
-    def __init__(self, link, object):
+    def __init__(self, link, obj):
         assert isinstance(link, (Link, type(None))), "Invalid link type (%s) for proxy" % type(link)
-        assert isinstance(object, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(object)
+        assert isinstance(obj, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(object)
         self.link = link
-        self.object = object
+        self.object = obj
 
     def __call__(self, *args, **kwargs):
         return self.link(*args, obj=self.object, **kwargs)
@@ -54,7 +54,7 @@ class Route(object):
     def is_instance(self):
         return len(self.keys) > 0
 
-    def extract_keys(self, resource, formatter=_string_formatter):
+    def extract_keys(self, resource):
         object_values = dict([(key, getattr(resource, key)) for key in self.keys])
         for key, val in object_values.items():
             if val is None:
@@ -99,8 +99,7 @@ class LazyCollection(object):
                 slice_size, current_page, last_page, min_i, max_i, limit_i = self._current_page_limits()
 
             i = index - min_i
-
-        return self.collection[i]
+            return self.collection[i]
 
     def _current_page_limits(self):
         slice_size = self.collection.slice
@@ -120,7 +119,7 @@ class LazyCollectionSlice(object):
     def from_url(cls, path, client, params, **kwargs):
         url = urlparse(client.base_url + path)
         params.update(params_to_dict(url.query))
-        query = ditc_to_params(params)
+        query = dictionary_to_params(params)
         url = ParseResult(url.scheme, url.netloc, url.path, url.params, query, url.fragment)
         response = requests.get(url.geturl(), **kwargs)
         return LazyCollectionSlice(response.json(), response.links, client, params, **kwargs)
@@ -130,7 +129,7 @@ class LazyCollectionSlice(object):
         url = urlparse(client.base_url + path)
         new_params = params_to_dict(url.query)
         new_params.update(params)
-        query = ditc_to_params(new_params)
+        query = dictionary_to_params(new_params)
         url = ParseResult(url.scheme, url.netloc, url.path, url.params, query, url.fragment)
         response = requests.get(url.geturl(), **kwargs)
         return LazyCollectionSlice(response.json(), response.links, client, params, **kwargs)
@@ -145,7 +144,7 @@ class LazyCollectionSlice(object):
         self.last_page = None
         self.slice = None
 
-        if not self.links is None:
+        if self.links is not None:
             self._parse_links()
             self._create_links()
 
@@ -165,7 +164,8 @@ class LazyCollectionSlice(object):
 
     def _create_links(self):
         for link_name, link_desc in self.links.items():
-            setattr(self, link_name, partial(self.from_url, link_desc[URL], self.client, self.params, **self.request_kwargs))
+            f = partial(self.from_url, link_desc[URL], self.client, self.params, **self.request_kwargs)
+            setattr(self, link_name, f)
 
     def __getitem__(self, index):
         item = self.client.resolve_element(self.items[index])
@@ -186,10 +186,8 @@ class Link(object):
         self.request_kwargs = requests_kwargs
 
     def __call__(self, *args, obj=None, resolve=True, **kwargs):
-        obj_schema = None
-        if hasattr(obj, "_schema"):
-            obj_schema = obj._schema
-        self.schema = {} #self._resolve_schema(obj.client, self.schema, obj_schema, {})
+        # TODO: set the proper schema for input
+        self.schema = {}
         url = self.generate_url(obj, self.route)
         json, params = self._process_args(*args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
@@ -204,7 +202,8 @@ class Link(object):
             raise RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text))
 
         res_obj = res.json()
-        self.target_schema = {} #self._resolve_schema(obj.client, self.target_schema, obj_schema, {})
+        # TODO: set the proper schema for output
+        self.target_schema = {}
         valid_res = self._validate_out(res_obj)
 
         if not resolve:
@@ -219,16 +218,17 @@ class Link(object):
     def generate_url(self, obj, route):
         base_url = obj.client.base_url
         url = "{base}{path}".format(base=base_url, path=route.path)
-        logger.debug("Generated url: %s" % url)
         if isinstance(obj, Resource):
-            url = url.format({k:getattr(obj, k, "") for k in self.keys})
+            url = url.format(**{k: getattr(obj, str(k)) for k in self.route.keys})
         if url.endswith("/"):
             return url[0:-1]
+        logger.debug("Generated url: %s" % url)
         return url
 
     def _process_args(self, *args, **kwargs):
         json, params = None, None
-
+        if len(args) == 1:
+            args = args[0]
         if self.method in [POST, PATCH]:
             args = self._check_input(args)
             json = self._validate_in(args)
@@ -239,48 +239,29 @@ class Link(object):
 
     def _check_input(self, obj):
         if isinstance(obj, Resource):
-            return obj._instance
+            return self._check_input(obj.instance)
         elif isinstance(obj, (list, tuple)):
-            if len(obj) == 1:
-                return self._check_input(obj[0])
-            else:
-                return [self._check_input(el) for el in obj]
+            return [self._check_input(el) for el in obj]
+        elif isinstance(obj, dict):
+            for key, value in obj.items():
+                obj[key] = self._check_input(value)
+            return obj
         else:
             return obj
 
-    def _resolve_schema(self, client, fragment=None, schema=None, default=None):
-        if not fragment is None:
-            if isinstance(fragment, dict):
-                if REF in fragment:
-                    fragment = client.resolve(fragment[REF], target_schema=schema)
-                    fragment = self._resolve_schema(client, fragment, schema, fragment)
-                else:
-                    for key, value in fragment.items():
-                        fragment[key] = self._resolve_schema(client, value, schema, value)
-                return fragment
-            elif isinstance(fragment, list):
-                return [self._resolve_schema(client, value, schema, value) for value in fragment]
-
-        return default
-
-    def _validate(self, schema, obj):
-        if not schema is None:
-            validate(obj, schema)
-        return obj
-
-    def _validate_params(self, input):
-        self._validate(self.schema, input)
+    def _validate_params(self, params):
+        utils.validate_schema(self.schema, params)
         for param in self.schema[PROPERTIES]:
             if 'default ' in self.schema[PROPERTIES][param]:
-                if not param in input:
-                    input[param] = self.schema[PROPERTIES][param]['default']
-        return input
+                if param not in params:
+                    params[param] = self.schema[PROPERTIES][param]['default']
+        return params
 
-    def _validate_in(self, input):
-        return self._validate(self.schema, input)
+    def _validate_in(self, params):
+        return utils.validate_schema(self.schema, params)
 
     def _validate_out(self, out):
-        return self._validate(self.target_schema, out)
+        return utils.validate_schema(self.target_schema, out)
 
     def __repr__(self):
         return "[Link %s '%s']" % (self.method, self.route.path)
@@ -292,12 +273,25 @@ class Resource:
     _instance_links = None
     _self_route = None
 
-    def __init__(self, id=None, instance=None):
+    def __init__(self, oid=None, instance=None):
         self._create_proxies()
-        self._id = id
+        self._id = oid
         self._instance = instance
-        if id is None:  # make a new object
+        if oid is None:  # make a new object
             self._instance = {}
+
+    @property
+    def instance(self):
+        filled_instance = {}
+        for key, value in self._instance.items():
+            definition = self.properties[key]
+            try:
+                ret = utils.make_valid_value(value, definition)
+                filled_instance[key] = ret
+            except KeyError as e:
+                filled_instance[key] = value
+
+        return filled_instance
 
     def _create_proxies(self):
         for name, link in self._instance_links.items():
@@ -312,7 +306,7 @@ class Resource:
             self._ensure_instance()
             item = self._instance.get(key, None)
             if isinstance(item, list):
-                return LazyCollectionSlice(item, {}, None)
+                return item
             else:
                 return self.client.resolve_element(item)
         else:
@@ -323,7 +317,8 @@ class Resource:
             property_def = self._schema[PROPERTIES][key]
             if REF in property_def:
                 self._schema[PROPERTIES][key] = self.client.resolve(property_def[REF], target_schema=self._schema)
-            validate(value,  self._schema[PROPERTIES][key])
+            if not isinstance(value, Resource):
+                validate(value, self._schema[PROPERTIES][key])
             self._ensure_instance()
             self._instance[key] = value
         else:
@@ -331,14 +326,14 @@ class Resource:
 
     def _ensure_instance(self):
         if self._instance is None:
-            self._instance = self.self_route(resolve=False)
+            self._instance = self.self(resolve=False)
 
     def save(self):
-        validate(self._instance, self._schema)
         if self.id is None:
-            print(self.create)
+            assert isinstance(self.create, LinkProxy)
             self._instance = self.create(self, resolve=False)
         else:
+            assert isinstance(self.update, LinkProxy)
             self._instance = self.update(self, resolve=False)
 
     @property
@@ -350,6 +345,11 @@ class Resource:
 
     def __dir__(self):
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
+
+    @property
+    def uri(self):
+        if self._instance and (URI in self._instance):
+            return self._instance[URI]
 
     @classmethod
     def factory(cls, docstring, name, schema, requests_kwargs, client):
@@ -384,4 +384,4 @@ class Resource:
         return resource
 
     def __str__(self):
-        return str(self._instance)
+        return "<%s %s: %s>" % (self.__class__, getattr(self, "id"), str(self._instance))

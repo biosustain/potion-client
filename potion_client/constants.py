@@ -16,14 +16,14 @@ SCHEMA_PATH = "/schema"
 DEFAULT_PER_PAGE = 20
 
 
-#HTTP constants
+# HTTP constants
 GET = "GET"
 POST = "POST"
 PATCH = "PATCH"
 DELETE = "DELETE"
 URL = "url"
 
-#Schema Constants
+# Schema Constants
 PROPERTIES = "properties"
 REF = "$ref"
 DOC = "description"
@@ -34,16 +34,21 @@ REL = "rel"
 SCHEMA = "schema"
 DEFINITIONS = "definitions"
 TARGET_SCHEMA = "targetSchema"
-URI = "_uri"
+URI = "$uri"
 TYPE = "type"
 ITEMS = "items"
 PAGINATION = "_pagination"
 CLASS = "class"
 SELF = "self"
+ADDITIONAL_PROPERTIES = 'additionalProperties'
+FORMAT = "format"
 
 
-#Expected types
+# Expected types
 TYPES = {
     "array": list,
-    "object": dict
+    "object": dict,
+    "null": type(None),
+   "integer": int,
+    "string": str
 }
