@@ -33,6 +33,7 @@ class MockResponseTool(object):
     @urlmatch(netloc='.*', method="POST", path=".*")
     def post_mock(self, url, request):
         body = json.loads(request.body)
+        print(url.path, "[%s %s]" % (type(body), body))
         return self.reply(self.client.post(url.path, data=body), request)
 
     @urlmatch(netloc='.*', method="PATCH", path=".*")
@@ -46,7 +47,6 @@ class MockResponseTool(object):
 
     def reply(self, response, request):
         content = "".join([b.decode(self.encoding) for b in response.response])
-
         res = requests.Response()
         res._content = content.encode(self.encoding)
         res._content_consumed = content
@@ -74,7 +74,7 @@ class MockAPITestCase(MockResponseTool, TestCase):
             id = sa.Column(sa.Integer, primary_key=True)
             attr1 = sa.Column(sa.String, nullable=False)
             attr2 = sa.Column(sa.String)
-            bar = sa.relationship("Baz", uselist=False, backref="foo")
+            baz = sa.relationship("Baz", uselist=False, backref="foo")
 
         class Bar(sa.Model):
             id = sa.Column(sa.Integer, primary_key=True)

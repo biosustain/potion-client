@@ -27,8 +27,8 @@ class InstanceTestCase(MockAPITestCase):
     def test_create_foo(self):
         with HTTMock(self.post_mock):
             foo = self.potion_client.Foo()
-            foo.attr1 = "1"
-            foo.attr2 = "2"
+            foo.attr1 = "value1"
+            foo.attr2 = "value2"
             foo.save()
             print(foo._instance)
             self.assertEqual(foo, {"_uri": "/foo/1"})
