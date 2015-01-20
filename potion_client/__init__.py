@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import requests
 from .constants import *
 from potion_client.exceptions import NotFoundException
@@ -43,6 +42,9 @@ class Client(object):
                 p = class_schema[PROPERTIES][prop]
                 if REF in p:
                     class_schema[PROPERTIES][prop] = self.resolve(p[REF], class_schema)
+
+    def resource(self, name):
+        return self._resources[name]
 
     def resolve_element(self, obj):
         if isinstance(obj, dict):

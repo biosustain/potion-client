@@ -11,8 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from http.client import parse_headers
 import json
+from io import StringIO
 from flask import Flask
+from flask_potion.routes import ItemAttributeRoute
 from flask.testing import FlaskClient
 from flask_testing import TestCase
 from flask_potion import fields, Api
@@ -44,32 +47,32 @@ class MockResponseTool(object):
 
     @urlmatch(netloc='.*', method="GET", path=".*")
     def get_mock(self, url, request):
-        return self.reply(self.client.get(url.path), request)
+        return self.reply(self.client.get(url.path))
 
     @urlmatch(netloc='.*', method="POST", path=".*")
     def post_mock(self, url, request):
         body = json.loads(request.body)
-        print(body)
-        return self.reply(self.client.post(url.path, data=body), request)
+        return self.reply(self.client.post(url.path, data=body))
 
     @urlmatch(netloc='.*', method="PATCH", path=".*")
     def patch_mock(self, url, request):
-        print(request.body)
         body = json.loads(request.body)
-        return self.reply(self.client.patch(url.path, data=body), request)
+        print(body)
+        return self.reply(self.client.patch(url.path, data=body))
 
     @urlmatch(netloc='.*', method="DELETE", path=".*")
     def delete_mock(self, url, request):
-        return self.reply(self.client.delete(url.path), request)
+        print(url)
+        return self.reply(self.client.delete(url.path))
 
-    def reply(self, response, request):
+    def reply(self, response):
         content = "".join([b.decode(self.encoding) for b in response.response])
         res = requests.Response()
         res._content = content.encode(self.encoding)
         res._content_consumed = content
         res.status_code = response.status_code
         res.encoding = self.encoding
-        res.headers = request.headers
+        res.headers = response.headers
         return res
 
 
@@ -91,7 +94,9 @@ class MockAPITestCase(MockResponseTool, TestCase):
             id = sa.Column(sa.Integer, primary_key=True)
             attr1 = sa.Column(sa.String, nullable=False)
             attr2 = sa.Column(sa.String)
+            attr3 = sa.Column(sa.String)
             baz = sa.relationship("Baz", uselist=False, backref="foo")
+            date = sa.Column(sa.DateTime)
 
         class Bar(sa.Model):
             id = sa.Column(sa.Integer, primary_key=True)
@@ -109,9 +114,12 @@ class MockAPITestCase(MockResponseTool, TestCase):
             class Schema:
                 bars = fields.ToMany("bar")
                 baz = fields.ToOne("baz", nullable=True)
+                date = fields.Date()
 
             class Meta:
                 model = Foo
+
+            # attr3 = ItemAttributeRoute(fields.String)
 
         class ResourceBar(ModelResource):
             class Schema:

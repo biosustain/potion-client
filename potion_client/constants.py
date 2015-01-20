@@ -42,6 +42,7 @@ CLASS = "class"
 SELF = "self"
 ADDITIONAL_PROPERTIES = 'additionalProperties'
 FORMAT = "format"
+READ_ONLY = "readOnly"
 
 
 # Expected types
@@ -49,6 +50,6 @@ TYPES = {
     "array": list,
     "object": dict,
     "null": type(None),
-   "integer": int,
+    "integer": int,
     "string": str
 }

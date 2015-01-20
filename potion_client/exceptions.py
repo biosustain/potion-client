@@ -19,3 +19,14 @@ class NotFoundException(Exception):
 
 class BadRequestException(Exception):
     pass
+
+
+class InternalServerErrorException(Exception):
+    pass
+
+
+HTTP_EXCEPTIONS = {
+    400: BadRequestException("Bad Request (400)"),
+    404: NotFoundException("Not Found (404)"),
+    500: InternalServerErrorException("Internal Server Error (500)")
+}

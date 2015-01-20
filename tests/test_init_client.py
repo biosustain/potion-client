@@ -26,5 +26,4 @@ class CreateClientTestCase(MockAPITestCase):
         with HTTMock(self.get_mock):
             c = Client()
             pprint(c._schema["properties"]["foo"])
-            raise
             self.assertSetEqual(set(c._schema['properties'].keys()), {'foo', 'bar', 'baz'})

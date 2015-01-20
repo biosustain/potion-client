@@ -20,8 +20,7 @@ import requests
 from potion_client import utils
 from .constants import *
 import logging
-from potion_client.exceptions import NotFoundException, BadRequestException
-from potion_client.utils import params_to_dict, dictionary_to_params, extract_keys
+from potion_client.exceptions import HTTP_EXCEPTIONS
 
 logger = logging.getLogger(__name__)
 logger.level = logging.DEBUG
@@ -31,24 +30,45 @@ _string_formatter = string.Formatter()
 
 
 class LinkProxy(object):
-    def __init__(self, link, obj):
+    def __init__(self, link, binding, **kwargs):
         assert isinstance(link, (Link, type(None))), "Invalid link type (%s) for proxy" % type(link)
-        assert isinstance(obj, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(object)
+        assert isinstance(binding, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(object)
         self.link = link
-        self.object = obj
+        self.binding = binding
+        self._kwargs = kwargs
+        self._parse_schema()
+
+    def _parse_schema(self):
+        if self.link.schema.get(ADDITIONAL_PROPERTIES, False):
+            for prop in self.link.schema[PROPERTIES].keys():
+                setattr(self, prop, self._proxy(prop))
 
     def __call__(self, *args, **kwargs):
-        return self.link(*args, obj=self.object, **kwargs)
+        self._kwargs.update(kwargs)
+        return self.link(*args, binding=self.binding, **self._kwargs)
 
     def __repr__(self):
-        return "[Link %s '%s']" % (self.link.method, self.link.route.path)
+        return "[Proxy %s '%s']" % (self.link.method, self.link.route.path)
+
+    def _proxy(self, name):
+
+        def fun(*args, **kwargs):
+            _kwargs = self._kwargs
+            if len(args) > 0:
+                assert len(kwargs) == 0, "Cannot set kwargs and args for %s" % name
+                _kwargs[name] = args
+            else:
+                _kwargs[name] = kwargs
+
+            return LinkProxy(self.link, self.binding, **_kwargs)
+        return fun
 
 
 class Route(object):
     def __init__(self, path):
         self.default = None
         self.path = path
-        self.keys = extract_keys(path)
+        self.keys = utils.extract_keys(path)
 
     @property
     def is_instance(self):
@@ -64,9 +84,13 @@ class Route(object):
 
 class LazyCollection(object):
 
-    def __init__(self, collection):
+    def __init__(self, collection, total):
         self.collection = collection
         self.pointer = 0
+        self.total = total
+
+    def __len__(self):
+        return self.total
 
     def __next__(self):
         if self.pointer < len(self.collection.items):
@@ -118,8 +142,8 @@ class LazyCollectionSlice(object):
     @classmethod
     def from_url(cls, path, client, params, **kwargs):
         url = urlparse(client.base_url + path)
-        params.update(params_to_dict(url.query))
-        query = dictionary_to_params(params)
+        params.update(utils.params_to_dictionary(url.query))
+        query = utils.dictionary_to_params(params)
         url = ParseResult(url.scheme, url.netloc, url.path, url.params, query, url.fragment)
         response = requests.get(url.geturl(), **kwargs)
         return LazyCollectionSlice(response.json(), response.links, client, params, **kwargs)
@@ -127,9 +151,9 @@ class LazyCollectionSlice(object):
     @classmethod
     def from_params(cls, path, client, params, **kwargs):
         url = urlparse(client.base_url + path)
-        new_params = params_to_dict(url.query)
+        new_params = utils.params_to_dictionary(url.query)
         new_params.update(params)
-        query = dictionary_to_params(new_params)
+        query = utils.dictionary_to_params(new_params)
         url = ParseResult(url.scheme, url.netloc, url.path, url.params, query, url.fragment)
         response = requests.get(url.geturl(), **kwargs)
         return LazyCollectionSlice(response.json(), response.links, client, params, **kwargs)
@@ -152,15 +176,17 @@ class LazyCollectionSlice(object):
         if 'self' in self.links:
             link = self.links['self']
             parse_url = urlparse(link[URL])
-            params = params_to_dict(parse_url.query)
+            params = utils.params_to_dictionary(parse_url.query)
             self.params['page'] = self.page = int(params['page'])
             self.params['per_page'] = self.slice = int(params['per_page'])
 
         if 'last' in self.links:
             link = self.links['last']
             parse_url = urlparse(link[URL])
-            params = params_to_dict(parse_url.query)
+            params = utils.params_to_dictionary(parse_url.query)
             self.last_page = int(params['page'])
+        else:
+            self.last_page = int(self.params['page'])
 
     def _create_links(self):
         for link_name, link_desc in self.links.items():
@@ -185,35 +211,27 @@ class Link(object):
         self.target_schema = target_schema
         self.request_kwargs = requests_kwargs
 
-    def __call__(self, *args, obj=None, resolve=True, **kwargs):
+    def __call__(self, *args, binding=None, resolve=True, **kwargs):
         # TODO: set the proper schema for input
-        self.schema = {}
-        url = self.generate_url(obj, self.route)
-        json, params = self._process_args(*args, **kwargs)
+        url = self.generate_url(binding, self.route)
+        json, params = self._process_args(binding, *args, **kwargs)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
-        if res.status_code == 404:
-            raise NotFoundException(url)
-        elif res.status_code == 400:
-            print(res.text)
-            raise BadRequestException(url)
-        elif res.status_code == 204:
-            return None
-        elif res.status_code > 400:
-            raise RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text))
-
+        print(res.text)
+        if res.status_code >= 400:
+            raise HTTP_EXCEPTIONS.get(res.status_code, RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text)))
         res_obj = res.json()
+
         # TODO: set the proper schema for output
         self.target_schema = {}
-        valid_res = self._validate_out(res_obj)
-
+        valid_res = self._validate_out(res_obj, binding)
         if not resolve:
             return valid_res
 
         if isinstance(valid_res, list):
-            collection = LazyCollectionSlice(valid_res, res.links, obj.client, params, **self.request_kwargs)
-            return LazyCollection(collection)
+            collection = LazyCollectionSlice(valid_res, res.links, binding.client, params, **self.request_kwargs)
+            return LazyCollection(collection, int(res.headers["X-Total-Count"]))
 
-        return obj.client.resolve_element(valid_res)
+        return binding.client.resolve_element(valid_res)
 
     def generate_url(self, obj, route):
         base_url = obj.client.base_url
@@ -225,15 +243,15 @@ class Link(object):
         logger.debug("Generated url: %s" % url)
         return url
 
-    def _process_args(self, *args, **kwargs):
+    def _process_args(self, binding, *args, **kwargs):
         json, params = None, None
         if len(args) == 1:
             args = args[0]
         if self.method in [POST, PATCH]:
             args = self._check_input(args)
-            json = self._validate_in(args)
+            json = self._validate_in(args, binding)
         else:
-            params = self._validate_in(kwargs)
+            params = self._validate_in(kwargs, binding)
 
         return json, params
 
@@ -257,10 +275,14 @@ class Link(object):
                     params[param] = self.schema[PROPERTIES][param]['default']
         return params
 
-    def _validate_in(self, params):
+    def _validate_in(self, params, binding):
+        if REF in self.schema and self.schema[REF] == "#":
+            self.schema = getattr(binding, "_schema")
         return utils.validate_schema(self.schema, params)
 
-    def _validate_out(self, out):
+    def _validate_out(self, out, binding):
+        if REF in self.schema and self.schema[REF] == "#":
+            self.target_schema = getattr(binding, "_schema")
         return utils.validate_schema(self.target_schema, out)
 
     def __repr__(self):
@@ -282,16 +304,18 @@ class Resource:
 
     @property
     def instance(self):
-        filled_instance = {}
-        for key, value in self._instance.items():
-            definition = self.properties[key]
-            try:
-                ret = utils.make_valid_value(value, definition)
-                filled_instance[key] = ret
-            except KeyError as e:
-                filled_instance[key] = value
+        instance = {}
 
-        return filled_instance
+        for key in self.properties.keys():
+            read_only = self.properties[key].get(READ_ONLY, False)
+            value = self._instance.get(key, None)
+            if value is None:
+                value = utils.convert_value(value, self.properties[key])
+
+            if not read_only and value is not None:
+                instance[key] = value
+
+        return instance
 
     def _create_proxies(self):
         for name, link in self._instance_links.items():
@@ -306,23 +330,31 @@ class Resource:
             self._ensure_instance()
             item = self._instance.get(key, None)
             if isinstance(item, list):
-                return item
+                return utils.evaluate_list(item, self.client)
             else:
                 return self.client.resolve_element(item)
         else:
             getattr(super(Resource, self), key, self)
 
     def __setattr__(self, key, value):
+        assert not key.startswith("$"), "Invalid property %s" % key
+
         if key in self._schema[PROPERTIES]:
-            property_def = self._schema[PROPERTIES][key]
-            if REF in property_def:
-                self._schema[PROPERTIES][key] = self.client.resolve(property_def[REF], target_schema=self._schema)
-            if not isinstance(value, Resource):
-                validate(value, self._schema[PROPERTIES][key])
+            property_definition = self._define_property(key)
+            value = utils.convert_value(value, property_definition)
+
+            validate(value, property_definition)
             self._ensure_instance()
             self._instance[key] = value
         else:
             super(Resource, self).__setattr__(key, value)
+
+    def _define_property(self, key):
+        if REF in self._schema[PROPERTIES][key]:
+            self._schema[PROPERTIES][key] = self.client.resolve(self._schema[PROPERTIES][key][REF],
+                                                                target_schema=self._schema)
+        definition = self._schema[PROPERTIES][key]
+        return definition
 
     def _ensure_instance(self):
         if self._instance is None:
@@ -336,11 +368,14 @@ class Resource:
             assert isinstance(self.update, LinkProxy)
             self._instance = self.update(self, resolve=False)
 
+    def refresh(self):
+        self._instance = self.self(resolve=False)
+
     @property
     def id(self):
         if self._id is None:
             if self._instance and (URI in self._instance):
-                self._id = self._instance[URI].split("/")[-1]
+                self._id = utils.parse_uri(self._instance[URI])[-1]
         return self._id
 
     def __dir__(self):
@@ -348,7 +383,8 @@ class Resource:
 
     @property
     def uri(self):
-        if self._instance and (URI in self._instance):
+        self._ensure_instance()
+        if URI in self._instance:
             return self._instance[URI]
 
     @classmethod
@@ -385,3 +421,9 @@ class Resource:
 
     def __str__(self):
         return "<%s %s: %s>" % (self.__class__, getattr(self, "id"), str(self._instance))
+
+    def __eq__(self, other):
+        if self.uri and other.uri:
+            return self.uri == other.uri
+        else:
+            super(Resource, self).__eq__(other)
