@@ -72,20 +72,6 @@ class Client(object):
     def resource(self, name):
         return self._resources[name]
 
-    def resolve_element(self, obj):
-        if isinstance(obj, dict):
-            if URI in obj:
-                path = obj[URI].split("/")
-                id, klass = path[-1], path[-2]
-                return self._resources[klass](id, instance=obj)
-        elif isinstance(obj, str):
-            if obj.startswith("/"):
-                path = obj[URI].split("/")
-                id, klass = path[-1], path[-2]
-                return self._resources[klass](id)
-
-        return obj
-
     def resolve(self, ref, target_schema=None):
         if ref in self._schema_cache:
             return self._schema_cache[ref]
