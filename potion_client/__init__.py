@@ -40,14 +40,16 @@ class Reference(Resolver):
 
 
 class Client(object):
+    resolvers = {
+        "$date": Date,
+        "$ref": Reference
+    }
+
+
     def __init__(self, base_url="http://localhost", schema_path="/schema", **requests_kwargs):
         self._resources = {}
         self.base_url = base_url
         self._schema_cache = {}
-        self.resolvers = {
-            "$date": Date,
-            "$ref": Reference
-        }
 
         response = requests.get(base_url+schema_path, **requests_kwargs)
         if response.status_code == 404:
