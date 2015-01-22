@@ -57,12 +57,10 @@ class MockResponseTool(object):
     @urlmatch(netloc='.*', method="PATCH", path=".*")
     def patch_mock(self, url, request):
         body = json.loads(request.body)
-        print(body)
         return self.reply(self.client.patch(url.path, data=body))
 
     @urlmatch(netloc='.*', method="DELETE", path=".*")
     def delete_mock(self, url, request):
-        print(url)
         return self.reply(self.client.delete(url.path))
 
     def reply(self, response):

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from httmock import HTTMock
+import time
 from potion_client import Client
 from potion_client_testing import MockAPITestCase
 
@@ -22,21 +23,29 @@ class InstanceTestCase(MockAPITestCase):
         self.foo = self.potion_client.Foo()
         self.foo.attr1 = "value1"
         self.foo.attr2 = "value2"
+        self.foo.date = self.time
         self.foo.save()
 
     def setUp(self):
         super(InstanceTestCase, self).setUp()
+        self.time = int(time.time())
         with HTTMock(self.get_mock):
             self.potion_client = Client()
 
     def test_create_foo(self):
         with HTTMock(self.post_mock):
             self._create_foo()
-            self.assertEqual(self.foo._instance, {"$uri": "/foo/1",
-                                                  "attr1": "value1",
-                                                  "attr2": "value2",
-                                                  "bars": [],
-                                                  "baz": None})
+
+            expected = {
+                "$uri": "/foo/1",
+                "attr1": "value1",
+                "attr2": "value2",
+                "bars": [],
+                "baz": None,
+                "date": self.time
+            }
+            for key in expected.keys():
+                self.assertEqual(getattr(self.foo, key), expected[key])
 
     def test_add_instance(self):
         with HTTMock(self.post_mock, self.get_mock):
@@ -57,7 +66,7 @@ class InstanceTestCase(MockAPITestCase):
     def test_search_foo(self):
         with HTTMock(self.post_mock, self.get_mock):
             self._create_foo()
-            foo_by_attr = self.potion_client.Foo.instances(where={"attr1": {"$text": "value1"}})
+            foo_by_attr = self.potion_client.Foo.instances.where(attr1={"$text": "value1"})
             self.assertEqual(len(foo_by_attr), 1)
             self.assertIn(self.foo, foo_by_attr)
 
@@ -66,11 +75,15 @@ class InstanceTestCase(MockAPITestCase):
             self._create_foo()
             self.foo.attr1 = "value3"
             self.foo.save()
-            self.assertEqual(self.foo._instance, {"$uri": "/foo/1",
-                                                  "attr1": "value3",
-                                                  "attr2": "value2",
-                                                  "bars": [],
-                                                  "baz": None})
+            expected = {
+                "$uri": "/foo/1",
+                "attr1": "value3",
+                "attr2": "value2",
+                "bars": [],
+                "baz": None,
+                "date": self.time}
+            for key in expected.keys():
+                self.assertEqual(getattr(self.foo, key), expected[key])
 
     # TODO: it doesn't not return a json response
     def test_delete_foo(self):

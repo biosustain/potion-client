@@ -13,8 +13,30 @@
 # limitations under the License.
 import requests
 from .constants import *
+from potion_client import utils
 from potion_client.exceptions import NotFoundException
 from potion_client.routes import Resource
+
+
+class Resolver(object):
+
+    @classmethod
+    def resolve(cls, value, client, *args):
+        raise NotImplementedError
+
+
+class Date(Resolver):
+
+    @classmethod
+    def resolve(cls, value, client, *args):
+        return value
+
+
+class Reference(Resolver):
+
+    @classmethod
+    def resolve(cls, value, client, *args):
+        return utils.evaluate_ref(value, client)
 
 
 class Client(object):
@@ -22,6 +44,10 @@ class Client(object):
         self._resources = {}
         self.base_url = base_url
         self._schema_cache = {}
+        self.resolvers = {
+            "$date": Date,
+            "$ref": Reference
+        }
 
         response = requests.get(base_url+schema_path, **requests_kwargs)
         if response.status_code == 404:

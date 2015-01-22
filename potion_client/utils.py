@@ -73,10 +73,13 @@ def convert_value_object(obj, definition):
     if PROPERTIES in definition:
         return_obj = {}
         for key in definition[PROPERTIES].keys():
-            return_obj[key] = getattr(obj, definition[PROPERTIES][key][FORMAT])
+            if FORMAT in definition[PROPERTIES][key]:
+                return_obj[key] = getattr(obj, definition[PROPERTIES][key][FORMAT])
+            else:
+                ret_type = type_for(definition[PROPERTIES][key][TYPE])[0]
+                return_obj[key] = ret_type(obj)
         return return_obj
-    else:
-        return obj
+    return obj
 
 
 def convert_empty_value_type(definition):
@@ -127,7 +130,7 @@ def evaluate_list(a_list, client):
 
 def evaluate_ref(uri, client):
     resource_name, resource_id = parse_uri(uri)
-    klass = client.resource(resource_name)
-    return klass(resource_id)
+    resource_class = client.resource(resource_name)
+    return resource_class(resource_id)
 
 
