@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import string
 from jsonschema import validate
 from potion_client.constants import *
@@ -85,9 +86,8 @@ def depth(dictionary, d=0):
 
 def dictionary_to_params(d):
     s = []
-    d = expand_params(d)
     for key, value in d.items():
-        s.append("%s=%s" % (key, value))
+        s.append("%s=%s" % (key, json.dumps(value)))
 
     return "&".join(s)
 

@@ -13,26 +13,36 @@
 # limitations under the License.
 
 
-class NotFoundException(Exception):
+class HTTPException(Exception):
     pass
 
 
-class BadRequestException(Exception):
+class NotFoundException(HTTPException):
     pass
 
 
-class InternalServerErrorException(Exception):
+class BadRequestException(HTTPException):
+    pass
+
+
+class InternalServerErrorException(HTTPException):
+    pass
+
+
+class ConflictException(HTTPException):
     pass
 
 
 HTTP_EXCEPTIONS = {
     400: BadRequestException,
     404: NotFoundException("Not Found (404)"),
+    409: ConflictException("Conflict (409"),
     500: InternalServerErrorException("Internal Server Error (500)")
 }
 
 HTTP_MESSAGES = {
     400: "Bad Request (400)",
     404: "Not Found (404)",
+    409: "Conflict",
     500: "Internal Server Error (500)"
 }

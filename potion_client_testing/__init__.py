@@ -55,6 +55,7 @@ class MockResponseTool(object):
     def post_mock(self, url, request):
         path = utils.path_for_url(url)
         body = json.loads(request.body)
+        print(body)
         return self.reply(self.client.post(path, data=body))
 
     @urlmatch(netloc='.*', method="PATCH", path=".*")
