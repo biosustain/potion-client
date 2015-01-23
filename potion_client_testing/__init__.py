@@ -24,6 +24,7 @@ from flask_sqlalchemy import SQLAlchemy
 import requests
 from sqlalchemy.orm import backref
 from httmock import urlmatch
+from potion_client import utils
 
 
 class ApiClient(FlaskClient):
@@ -47,21 +48,25 @@ class MockResponseTool(object):
 
     @urlmatch(netloc='.*', method="GET", path=".*")
     def get_mock(self, url, request):
-        return self.reply(self.client.get(url.path))
+        path = utils.path_for_url(url)
+        return self.reply(self.client.get(path))
 
     @urlmatch(netloc='.*', method="POST", path=".*")
     def post_mock(self, url, request):
+        path = utils.path_for_url(url)
         body = json.loads(request.body)
-        return self.reply(self.client.post(url.path, data=body))
+        return self.reply(self.client.post(path, data=body))
 
     @urlmatch(netloc='.*', method="PATCH", path=".*")
     def patch_mock(self, url, request):
+        path = utils.path_for_url(url)
         body = json.loads(request.body)
-        return self.reply(self.client.patch(url.path, data=body))
+        return self.reply(self.client.patch(path, data=body))
 
     @urlmatch(netloc='.*', method="DELETE", path=".*")
     def delete_mock(self, url, request):
-        return self.reply(self.client.delete(url.path))
+        path = utils.path_for_url(url)
+        return self.reply(self.client.delete(path))
 
     def reply(self, response):
         content = "".join([b.decode(self.encoding) for b in response.response])

@@ -45,7 +45,6 @@ class Client(object):
         "$ref": Reference
     }
 
-
     def __init__(self, base_url="http://localhost", schema_path="/schema", **requests_kwargs):
         self._resources = {}
         self.base_url = base_url

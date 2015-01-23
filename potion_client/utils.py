@@ -16,6 +16,15 @@ from jsonschema import validate
 from potion_client.constants import *
 
 
+def path_for_url(url):
+    if url.query is not None and len(url.query) > 0:
+        path = url.path + "?" + url.query
+    else:
+        path = url.path
+
+    return path
+
+
 def camelize(a_string):
     assert isinstance(a_string, str)
     return "".join([part.capitalize() for part in a_string.replace("-", "_").split("_")])
@@ -36,8 +45,47 @@ def params_to_dictionary(params_string):
     return d
 
 
+def _expand_pair(key, value, out_params):
+    if isinstance(value, dict):
+        for k, v in value.items():
+            out_params["%s[%s]" % (key, k)] = v
+    elif isinstance(value, list):
+        for i, e in enumerate(value):
+            out_params["%s[%s]" % (key, i)] = e
+    elif isinstance(value, str):
+        out_params[key] = "'%s'" % value
+    else:
+        out_params[key] = value
+
+
+def expand_params(in_params):
+    out_params = {}
+
+    if isinstance(in_params, dict):
+        for key, value in in_params.items():
+            _expand_pair(key, value, out_params)
+
+    elif isinstance(in_params, list):
+        for index, value in enumerate(in_params):
+            _expand_pair(index, value, out_params)
+
+    d = depth(out_params)
+    while d > 1:
+        out_params = expand_params(out_params)
+        d = depth(out_params)
+
+    return out_params
+
+
+def depth(dictionary, d=0):
+    if not isinstance(dictionary, dict) or not dictionary:
+        return d
+    return max([depth(v, d+1) for k, v in dictionary.items()])
+
+
 def dictionary_to_params(d):
     s = []
+    d = expand_params(d)
     for key, value in d.items():
         s.append("%s=%s" % (key, value))
 
@@ -62,8 +110,12 @@ def convert_value_list(values, definition):
 def convert_value_dict(dictionary, definition):
     if PROPERTIES in definition:
         return_obj = {}
-        for key in definition[PROPERTIES].keys():
-            return_obj[key] = dictionary[definition[PROPERTIES][key][FORMAT]]
+        for key in dictionary.keys():
+            if FORMAT in definition[PROPERTIES][key]:
+                return_obj[key] = dictionary[definition[PROPERTIES][key][FORMAT]]
+            if TYPE in definition[PROPERTIES][key]:
+                py_type = type_for(definition[PROPERTIES][key][TYPE])[0]
+                return_obj[key] = py_type(dictionary[key])
         return return_obj
     else:
         return dictionary
@@ -79,6 +131,9 @@ def convert_value_object(obj, definition):
                 ret_type = type_for(definition[PROPERTIES][key][TYPE])[0]
                 return_obj[key] = ret_type(obj)
         return return_obj
+    elif TYPE in definition:
+        ret_type = type_for(definition[TYPE])[0]
+        return ret_type(obj)
     return obj
 
 
@@ -128,9 +183,9 @@ def evaluate_list(a_list, client):
     return a_list
 
 
-def evaluate_ref(uri, client):
+def evaluate_ref(uri, client, instance=None):
     resource_name, resource_id = parse_uri(uri)
     resource_class = client.resource(resource_name)
-    return resource_class(resource_id)
+    return resource_class(oid=resource_id, instance=instance)
 
 

@@ -26,7 +26,13 @@ class InternalServerErrorException(Exception):
 
 
 HTTP_EXCEPTIONS = {
-    400: BadRequestException("Bad Request (400)"),
+    400: BadRequestException,
     404: NotFoundException("Not Found (404)"),
     500: InternalServerErrorException("Internal Server Error (500)")
+}
+
+HTTP_MESSAGES = {
+    400: "Bad Request (400)",
+    404: "Not Found (404)",
+    500: "Internal Server Error (500)"
 }

@@ -19,7 +19,7 @@ import requests
 from potion_client import utils
 from .constants import *
 import logging
-from potion_client.exceptions import HTTP_EXCEPTIONS
+from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
 
 logger = logging.getLogger(__name__)
 logger.level = logging.DEBUG
@@ -59,7 +59,6 @@ class AttributeMapper(object):
 
         return obj
 
-
     @property
     def empty_value(self):
         if self.read_only:
@@ -82,16 +81,23 @@ class DynamicElement(object):
 
 
 class LinkProxy(DynamicElement):
-    def __init__(self, link, **kwargs):
+
+    def __init__(self, link=None, binding=None, attributes={}, **kwargs):
         super(LinkProxy, self).__init__(link)
         self._kwargs = kwargs
-        self._binding = None
+        self._binding = binding
+        self._attributes = attributes
+
+    def serialize_attribute_value(self, key, value):
+        if key in self._attributes:
+            return self._attributes[key].serialize(value)
+        return value
 
     def handler(self, res: requests.Response):
         raise NotImplementedError
 
     def bind(self, instance):
-        return self.return_type(self._link, instance)
+        return self.return_type(link=self._link, binding=instance)
 
     @property
     def return_type(self):
@@ -108,15 +114,31 @@ class LinkProxy(DynamicElement):
         return self.bind(instance or owner)
 
     def __repr__(self):
-        return "[Proxy %s '%s']" % (self._link.method, self._link.route.path)
+        return "[Proxy %s '%s'] %s" % (self._link.method, self._link.route.path, self._kwargs)
 
     def _parse_schema(self):
-        if self._link.schema.get(ADDITIONAL_PROPERTIES, False):
-            for prop in self._link.schema[PROPERTIES].keys():
+        if PROPERTIES in self._link.schema:
+            properties = self._link.schema[PROPERTIES]
+            for prop in properties.keys():
+                self._attributes[prop] = AttributeMapper(properties[prop], False, False)
                 setattr(self, prop, self._proxy(prop))
 
     def _proxy(self, prop):
-        raise NotImplementedError
+
+        def new_proxy(*args, **kwargs):
+            new_kwargs = self._kwargs
+            if len(args) > 0:
+                assert len(kwargs) == 0, "Setting args and kwargs is not supported"
+                if len(args) == 1:
+                    new_kwargs[prop] = args[0]
+                else:
+                    new_kwargs[prop] = args
+            else:
+                new_kwargs[prop] = kwargs
+            proxy = self.return_type(link=self._link, binding=self._binding, attributes=self._attributes, **new_kwargs)
+            return proxy
+
+        return new_proxy
 
     def _resolve(self, *args, **kwargs):
         new_kwargs = self._kwargs
@@ -125,22 +147,12 @@ class LinkProxy(DynamicElement):
 
 
 class BoundedLinkProxy(LinkProxy):
-    def __init__(self, link, binding, **kwargs):
-        super(BoundedLinkProxy, self).__init__(link, **kwargs)
-        self._binding = binding
+    def __init__(self, **kwargs):
+        super(BoundedLinkProxy, self).__init__(**kwargs)
         self._parse_schema()
 
-    def _proxy(self, prop):
-
-        def new_proxy(**kwargs):
-            new_kwargs = self._kwargs
-            new_kwargs[prop] = kwargs
-            return self.return_type(self._link, self._binding, **new_kwargs)
-
-        return new_proxy
-
     def __repr__(self):
-        return "[BindProxy %s '%s' %s]" % (self._link.method, self._link.route.path, self._binding)
+        return "[BoundedProxy %s '%s' %s] %s" % (self._link.method, self._link.route.path, self._binding, self._kwargs)
 
 
 class VoidLinkProxy(BoundedLinkProxy):
@@ -151,53 +163,35 @@ class VoidLinkProxy(BoundedLinkProxy):
         self._resolve(*args, **kwargs)
 
     def __repr__(self):
-        return "[BindProxy %s '%s' %s] => None" % (self._link.method, self._link.route.path, self._binding)
-
-
-class ListLinkIterator(object):
-    def __init__(self, list_link):
-        assert isinstance(list_link, ListLinkProxy), "Invalid link for iterator %s" % type(list_link)
-        if hasattr(list_link, 'first'):
-            self._slice = list_link.first
-        else:
-            self._slice = list_link
-
-        self.pointer = 0
-        self.total = len(self._slice)
-
-    def __next__(self):
-        if self.pointer >= self._slice.slice_size:
-            self.pointer = 0
-            if hasattr(self._slice, 'next'):
-                self._slice = self._slice.next
-            else:
-                raise IndexError
-
-        ret = self._slice[self.pointer]
-        self.pointer += 1
-        return ret
+        return "[BoundedProxy %s '%s' %s] %s => None" % (self._link.method,
+                                                      self._link.route.path,
+                                                      self._binding,
+                                                      self._kwargs)
 
 
 class ListLinkProxy(BoundedLinkProxy):
-    def __init__(self, link=None, binding=None, links={}, collection=None, total=0, **kwargs):
-        super(ListLinkProxy, self).__init__(link, binding, **kwargs)
-        self._collection = collection
-        self._total = total
+    def __init__(self, links={}, **kwargs):
+        super(ListLinkProxy, self).__init__(**kwargs)
+        self._collection = None
+        self._total = 0
         self._links = links
 
     def handler(self, res: requests.Response):
-        res.links.pop("self")
-        for name, link in res.links.items():
-            self._create_link(name, link)
-        self._total = int(res.headers["X-Total-Count"])
         self._collection = res.json()
+        res.links.pop("self")
+        [self._create_link(name, link) for name, link in res.links.items()]
+        self._total = int(res.headers["X-Total-Count"])
 
     def _create_link(self, name, link):
         if not isinstance(link, LinkProxy):
             url = urlparse(link[URL])
-            kwargs = utils.params_to_dictionary(url.query)
+            new_kwargs = self._kwargs
+            new_kwargs.update(utils.params_to_dictionary(url.query))
 
-            link = ListLinkProxy(self._link, self._binding, {}, self._collection, self._total, **kwargs)
+            for key, value in new_kwargs.items():
+                new_kwargs[key] = self.serialize_attribute_value(key, value)
+            link = ListLinkProxy(link=self._link, binding=self._binding, **new_kwargs)
+        setattr(self, name, link)
         self._links[name] = link
 
     def __iter__(self):
@@ -205,6 +199,8 @@ class ListLinkProxy(BoundedLinkProxy):
 
     @property
     def slice_size(self):
+        if self._collection is None:
+            self._resolve()
         return len(self._collection)
 
     def __len__(self):
@@ -212,19 +208,49 @@ class ListLinkProxy(BoundedLinkProxy):
             self._resolve()
         return self._total
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int):
         if self._collection is None:
             self._resolve()
 
-        return self._binding.client.resolve_element(self._collection[index])
+        if index > self._total:
+            per_page = self._kwargs['per_page']
+            page = index/per_page
+            kwargs = self._kwargs
+            kwargs['page'] = page
+            link = ListLinkIterator(link=self._link, binding=self._binding, **kwargs)
+            return link[index-page*per_page]
+
+        return utils.evaluate_ref(self._collection[index][URI], self._binding.client, self._collection[index])
 
     def __repr__(self):
-        return "[BindProxy %s '%s' %s] => Collection" % (self._link.method, self._link.route.path, self._binding)
+        return "[BoundedProxy %s '%s' %s] %s => Collection" % (self._link.method,
+                                                            self._link.route.path,
+                                                            self._binding,
+                                                            self._kwargs)
 
-    def __call__(self, **kwargs):
-        new_kwargs = self._kwargs
-        new_kwargs.update(kwargs)
-        return ListLinkProxy(self._link, self._binding, self._links, self._collection, self._total, **new_kwargs)
+
+class ListLinkIterator(object):
+
+    def __init__(self, list_link: ListLinkProxy):
+        if hasattr(list_link, 'first'):
+            self._slice_link = list_link.first
+        else:
+            self._slice_link = list_link
+
+        self.pointer = 0
+        self.total = len(self._slice_link)
+
+    def __next__(self):
+        if self.pointer >= self._slice_link.slice_size:
+            if hasattr(self._slice_link, 'next'):
+                self._slice_link = self._slice_link.next
+                self.pointer = 0
+            else:
+                raise StopIteration
+
+        ret = self._slice_link[self.pointer]
+        self.pointer += 1
+        return ret
 
 
 class InstanceLinkProxy(BoundedLinkProxy):
@@ -235,12 +261,16 @@ class InstanceLinkProxy(BoundedLinkProxy):
         else:
             return lambda res: res.json()
 
-    def __init__(self, link, binding, **kwargs):
+    def __init__(self, **kwargs):
+        binding = kwargs["binding"]
         assert isinstance(binding, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(binding)
-        super(InstanceLinkProxy, self).__init__(link, binding, **kwargs)
+        super(InstanceLinkProxy, self).__init__(**kwargs)
 
     def __repr__(self):
-        return "[BindProxy %s '%s' %s] => object" % (self._link.method, self._link.route.path, self._binding)
+        return "[BoundedProxy %s '%s' %s] %s => object" % (self._link.method,
+                                                           self._link.route.path,
+                                                           self._binding,
+                                                           self._kwargs)
 
     def __call__(self, *args, **kwargs):
         return self._resolve(*args, **kwargs)
@@ -295,10 +325,13 @@ class Link(object):
         # TODO: set the proper schema for input
         url = self.generate_url(binding, self.route)
         json, params = self._process_args(binding, *args, **kwargs)
+        params = utils.dictionary_to_params(params)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
         if res.status_code >= 400:
-            raise HTTP_EXCEPTIONS.get(res.status_code, RuntimeError("Error: %i\nMessage: %s" % (res.status_code, res.text)))
-
+            code = res.status_code
+            default_error = RuntimeError
+            default_message = "Error: %s" % res.status_code
+            raise HTTP_EXCEPTIONS.get(code, default_error)(HTTP_MESSAGES.get(code, default_message), res.text)
         return handler(res)
 
     def generate_url(self, binding, route):
@@ -312,7 +345,7 @@ class Link(object):
         return url
 
     def _process_args(self, binding, *args, **kwargs):
-        json, params = None, None
+        json, params = None, {}
         if len(args) == 1:
             args = args[0]
         if self.method in [POST, PATCH]:
@@ -373,7 +406,7 @@ class Resource(object):
 
     def _create_proxies(self):
         for name, link in self._instance_links.items():
-            setattr(self, name, LinkProxy(link).bind(self))
+            setattr(self, name, LinkProxy(link=link).bind(self))
 
     @property
     def instance(self):

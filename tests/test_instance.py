@@ -19,10 +19,10 @@ from potion_client_testing import MockAPITestCase
 
 class InstanceTestCase(MockAPITestCase):
 
-    def _create_foo(self):
+    def _create_foo(self, attr1="value1", attr2="value2"):
         self.foo = self.potion_client.Foo()
-        self.foo.attr1 = "value1"
-        self.foo.attr2 = "value2"
+        self.foo.attr1 = attr1
+        self.foo.attr2 = attr2
         self.foo.date = self.time
         self.foo.save()
 
@@ -56,6 +56,49 @@ class InstanceTestCase(MockAPITestCase):
             bar.save()
             self.foo.refresh()
             self.assertIn(bar, self.foo.bars)
+
+    def test_multiple_foos(self):
+        with HTTMock(self.post_mock, self.get_mock):
+            self._create_foo(attr1="value1", attr2="value3")
+            self._create_foo(attr1="value1", attr2="value4")
+            self._create_foo(attr1="value1", attr2="value5")
+            self._create_foo(attr1="value1", attr2="value6")
+            self._create_foo(attr1="value1", attr2="value7")
+            self._create_foo(attr1="value1", attr2="value8")
+            self._create_foo(attr1="value1", attr2="value9")
+
+            instances = self.potion_client.Foo.instances
+            self.assertEqual(len(instances), 7)
+
+            self._create_foo(attr1="value1", attr2="value10")
+            self._create_foo(attr1="value1", attr2="value11")
+            self._create_foo(attr1="value1", attr2="value12")
+            self._create_foo(attr1="value1", attr2="value13")
+            self._create_foo(attr1="value1", attr2="value14")
+            self._create_foo(attr1="value1", attr2="value15")
+            self._create_foo(attr1="value1", attr2="value16")
+
+            instances = self.potion_client.Foo.instances
+            self.assertEqual(len(instances), 14)
+
+            self._create_foo(attr1="value1", attr2="value17")
+            self._create_foo(attr1="value1", attr2="value18")
+            self._create_foo(attr1="value1", attr2="value19")
+            self._create_foo(attr1="value1", attr2="value20")
+            self._create_foo(attr1="value1", attr2="value21")
+            self._create_foo(attr1="value1", attr2="value22")
+            self._create_foo(attr1="value1", attr2="value23")
+
+            instances = self.potion_client.Foo.instances
+            self.assertEqual(len(instances), 21)
+            instances = self.potion_client.Foo.instances.per_page(5)
+            self.assertEqual(instances.slice_size, 5)
+
+            self.assertEqual(len(instances), 21)
+            self.assertEqual([foo.attr2 for foo in instances], ["value%i" % i for i in range(3, 24)])
+
+            instances = self.potion_client.Foo.instances.where(attr2="value3")
+            self.assertEqual(len(instances), 1)
 
     def test_get_foo(self):
         with HTTMock(self.post_mock, self.get_mock):
