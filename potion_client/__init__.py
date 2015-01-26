@@ -18,32 +18,7 @@ from potion_client.exceptions import NotFoundException
 from potion_client.routes import Resource
 
 
-class Resolver(object):
-
-    @classmethod
-    def resolve(cls, value, client, *args):
-        raise NotImplementedError
-
-
-class Date(Resolver):
-
-    @classmethod
-    def resolve(cls, value, client, *args):
-        return value
-
-
-class Reference(Resolver):
-
-    @classmethod
-    def resolve(cls, value, client, *args):
-        return utils.evaluate_ref(value, client)
-
-
 class Client(object):
-    resolvers = {
-        "$date": Date,
-        "$ref": Reference
-    }
 
     def __init__(self, base_url="http://localhost", schema_path="/schema", **requests_kwargs):
         self._resources = {}
@@ -57,9 +32,7 @@ class Client(object):
         self._schema_cache[schema_path+"#"] = self._schema
 
         for name, desc in self._schema[PROPERTIES].items():
-            class_schema_url = self.base_url + desc[REF]
-            response = requests.get(class_schema_url, **requests_kwargs)
-            class_schema = response.json()
+            class_schema = requests.get(self.base_url + desc[REF], **requests_kwargs).json()
             resource = Resource.factory(desc.get(DOC, ""), name, class_schema, requests_kwargs, self)
             setattr(self, resource.__name__, resource)
             self._resources[name] = resource

@@ -43,6 +43,7 @@ SELF = "self"
 ADDITIONAL_PROPERTIES = 'additionalProperties'
 FORMAT = "format"
 READ_ONLY = "readOnly"
+ONE_OF = "oneOf"
 
 
 # Expected types
@@ -51,5 +52,6 @@ TYPES = {
     "object": dict,
     "null": type(None),
     "integer": int,
-    "string": str
+    "string": str,
+    "boolean": bool
 }

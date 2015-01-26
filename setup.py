@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from setuptools import setup, find_packages
-requirements = ['requests', 'jsonschema', ]
+requirements = ['requests', 'jsonschema']
 
 setup(
     name='gvc',
@@ -27,8 +27,8 @@ setup(
     keywords='potion client',
     url='TBD',
     classifiers=[
-        'Development Status :: 1 - Alpha',
-        'Topic :: Utilities',
+        'Development Status :: 4 - Beta',
+        'Topic :: Internet',
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: Apache Software License'
     ],

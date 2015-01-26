@@ -13,6 +13,15 @@
 # limitations under the License.
 
 
+class OneOfException(Exception):
+    def __init__(self, errors):
+        self._errors = errors
+
+    @property
+    def message(self):
+        return "Caused by one of %s" % ([str(e) for e in self._errors])
+
+
 class HTTPException(Exception):
     pass
 
@@ -35,9 +44,9 @@ class ConflictException(HTTPException):
 
 HTTP_EXCEPTIONS = {
     400: BadRequestException,
-    404: NotFoundException("Not Found (404)"),
-    409: ConflictException("Conflict (409"),
-    500: InternalServerErrorException("Internal Server Error (500)")
+    404: NotFoundException,
+    409: ConflictException,
+    500: InternalServerErrorException
 }
 
 HTTP_MESSAGES = {

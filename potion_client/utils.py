@@ -103,65 +103,6 @@ def validate_schema(schema, obj):
     return obj
 
 
-def convert_value_list(values, definition):
-    return [convert_value(value, definition) for value in values]
-
-
-def convert_value_dict(dictionary, definition):
-    if PROPERTIES in definition:
-        return_obj = {}
-        for key in dictionary.keys():
-            if FORMAT in definition[PROPERTIES][key]:
-                return_obj[key] = dictionary[definition[PROPERTIES][key][FORMAT]]
-            if TYPE in definition[PROPERTIES][key]:
-                py_type = type_for(definition[PROPERTIES][key][TYPE])[0]
-                return_obj[key] = py_type(dictionary[key])
-        return return_obj
-    else:
-        return dictionary
-
-
-def convert_value_object(obj, definition):
-    if PROPERTIES in definition:
-        return_obj = {}
-        for key in definition[PROPERTIES].keys():
-            if FORMAT in definition[PROPERTIES][key]:
-                return_obj[key] = getattr(obj, definition[PROPERTIES][key][FORMAT])
-            else:
-                ret_type = type_for(definition[PROPERTIES][key][TYPE])[0]
-                return_obj[key] = ret_type(obj)
-        return return_obj
-    elif TYPE in definition:
-        ret_type = type_for(definition[TYPE])[0]
-        return ret_type(obj)
-    return obj
-
-
-def convert_empty_value_type(definition):
-    python_types = type_for(definition[TYPE])
-    if type(None) in python_types:
-        return None
-
-    if len(python_types) == 1:
-        if list in python_types:
-            return []
-        if dict in python_types:
-            return {}
-
-
-def convert_value(value, definition):
-    if value is None:
-        return convert_empty_value_type(definition)
-    elif isinstance(value, list):
-        return convert_value_list(value, definition)
-    elif isinstance(value, dict):
-        return convert_value_dict(value, definition)
-    elif isinstance(value, object):
-        return convert_value_object(value, definition)
-    else:
-        return value
-
-
 def type_for(json_type):
     if isinstance(json_type, str):
         return [TYPES[json_type]]
@@ -187,5 +128,3 @@ def evaluate_ref(uri, client, instance=None):
     resource_name, resource_id = parse_uri(uri)
     resource_class = client.resource(resource_name)
     return resource_class(oid=resource_id, instance=instance)
-
-

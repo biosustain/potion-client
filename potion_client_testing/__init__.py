@@ -35,7 +35,7 @@ class ApiClient(FlaskClient):
         """
         headers = kw.pop('headers', [])
 
-        if 'data' in kw and (kw.pop('force_json', False) or not isinstance(kw['data'], str)):
+        if 'data' in kw:
             kw['data'] = json.dumps(kw['data'])
             kw['content_type'] = 'application/json'
 
@@ -55,7 +55,6 @@ class MockResponseTool(object):
     def post_mock(self, url, request):
         path = utils.path_for_url(url)
         body = json.loads(request.body)
-        print(body)
         return self.reply(self.client.post(path, data=body))
 
     @urlmatch(netloc='.*', method="PATCH", path=".*")
@@ -122,8 +121,9 @@ class MockAPITestCase(MockResponseTool, TestCase):
 
             class Meta:
                 model = Foo
+                exclude_fields = ['attr3']
 
-            # attr3 = ItemAttributeRoute(fields.String)
+            attr3 = ItemAttributeRoute(fields.String)
 
         class ResourceBar(ModelResource):
             class Schema:

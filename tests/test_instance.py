@@ -11,8 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from datetime import datetime, timezone
 from httmock import HTTMock
-import time
 from potion_client import Client
 from potion_client_testing import MockAPITestCase
 
@@ -23,15 +24,39 @@ class InstanceTestCase(MockAPITestCase):
         foo = self.potion_client.Foo()
         foo.attr1 = attr1
         foo.attr2 = attr2
+        foo.attr3 = "attr3"
         foo.date = self.time
         foo.save()
         return foo
 
+    def _create_bar(self, attr1=5, foo=None):
+        bar = self.potion_client.Bar()
+        bar.attr1 = attr1
+        bar.foo = foo
+        bar.save()
+        return bar
+
+    def _create_baz(self, foo=None):
+        baz = self.potion_client.Baz()
+        baz.foo = foo
+        baz.save()
+        return baz
+
     def setUp(self):
         super(InstanceTestCase, self).setUp()
-        self.time = int(time.time())
+        self.time = datetime.fromtimestamp(1, timezone.utc)
         with HTTMock(self.get_mock):
             self.potion_client = Client()
+
+    def test_one_to_one(self):
+        with HTTMock(self.post_mock, self.get_mock):
+            foo = self._create_foo()
+            self._create_foo()
+            self._create_foo()
+            baz = self._create_baz(foo=foo)
+            query = self.potion_client.Foo.instances.where(baz=baz)
+            self.assertEqual(len(query), 1)
+            self.assertIn(foo, query)
 
     def test_create_foo(self):
         with HTTMock(self.post_mock):
@@ -48,13 +73,10 @@ class InstanceTestCase(MockAPITestCase):
             for key in expected.keys():
                 self.assertEqual(getattr(foo, key), expected[key])
 
-    def test_add_instance(self):
+    def test_add_one_to_many(self):
         with HTTMock(self.post_mock, self.get_mock):
             foo = self._create_foo()
-            bar = self.potion_client.Bar()
-            bar.attr1 = 5
-            bar.foo = foo
-            bar.save()
+            bar = self._create_bar(foo=foo)
             foo.refresh()
             self.assertIn(bar, foo.bars)
 
@@ -113,7 +135,6 @@ class InstanceTestCase(MockAPITestCase):
             self._create_foo(attr1="value3")
             foo_by_attr = self.potion_client.Foo.instances.where(attr1={"$startswith": "value1"})
             len(foo_by_attr)
-            print(foo_by_attr._collection)
             self.assertEqual(len(foo_by_attr), 1)
             self.assertIn(foo, foo_by_attr)
 
@@ -137,3 +158,9 @@ class InstanceTestCase(MockAPITestCase):
         with HTTMock(self.delete_mock, self.post_mock):
             foo = self._create_foo()
             self.assertEqual(foo.destroy(), None)
+
+    def test_item_attribute(self):
+        with HTTMock(self.post_mock, self.get_mock, self.patch_mock):
+            foo = self._create_foo()
+            foo.updateAttr3("value3")
+            self.assertEqual(foo.readAttr3(), "value3")
