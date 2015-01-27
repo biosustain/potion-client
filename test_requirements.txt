@@ -1,5 +1,5 @@
 Flask-Testing
-potion
+flask-potion
 httmock
 nose
 
