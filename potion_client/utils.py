@@ -15,6 +15,7 @@ import json
 import string
 from jsonschema import validate
 from potion_client.constants import *
+from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
 
 
 def path_for_url(url):
@@ -24,6 +25,14 @@ def path_for_url(url):
         path = url.path
 
     return path
+
+
+def validate_response_status(response):
+    if response.status_code >= 400:
+        code = response.status_code
+        default_error = RuntimeError
+        default_message = "Error: %s" % response.status_code
+        raise HTTP_EXCEPTIONS.get(code, default_error)(HTTP_MESSAGES.get(code, default_message), response.text)
 
 
 def camelize(a_string):

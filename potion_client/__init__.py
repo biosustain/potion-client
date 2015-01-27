@@ -32,7 +32,9 @@ class Client(object):
         self._schema_cache[schema_path+"#"] = self._schema
 
         for name, desc in self._schema[PROPERTIES].items():
-            class_schema = requests.get(self.base_url + desc[REF], **requests_kwargs).json()
+            res = requests.get(self.base_url + desc[REF], **requests_kwargs)
+            utils.validate_response_status(res)
+            class_schema = res.json()
             resource = Resource.factory(desc.get(DOC, ""), name, class_schema, requests_kwargs, self)
             setattr(self, resource.__name__, resource)
             self._resources[name] = resource

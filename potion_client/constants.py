@@ -53,5 +53,6 @@ TYPES = {
     "null": type(None),
     "integer": int,
     "string": str,
-    "boolean": bool
+    "boolean": bool,
+    "number": float
 }

@@ -187,12 +187,10 @@ class LinkProxy(DynamicElement):
     def return_type(self):
         if self._link.return_type is list:
             return ListLinkProxy
-        elif self._link.return_type in [object, str, int, float, bool]:
-            return InstanceLinkProxy
-        elif self._link.return_type is dict:
-            return InstanceLinkProxy
-        else:
+        elif self._link.return_type is type(None):
             return VoidLinkProxy
+
+        return ObjectLinkProxy
 
     def __get__(self, instance, owner):
         return self.bind(instance or owner)
@@ -347,7 +345,7 @@ class ListLinkIterator(object):
         return ret
 
 
-class InstanceLinkProxy(BoundedLinkProxy):
+class ObjectLinkProxy(BoundedLinkProxy):
 
     def handler(self, res: requests.Response):
         return res.json()
@@ -355,7 +353,7 @@ class InstanceLinkProxy(BoundedLinkProxy):
     def __init__(self, **kwargs):
         binding = kwargs["binding"]
         assert isinstance(binding, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(binding)
-        super(InstanceLinkProxy, self).__init__(**kwargs)
+        super(ObjectLinkProxy, self).__init__(**kwargs)
 
     def __repr__(self):
         return "[BoundedProxy %s '%s' %s] %s => object" % (self._link.method,
@@ -401,18 +399,14 @@ class Link(object):
             if self.target_schema[REF] == "#":
                 return object
         else:
-            return None
+            return type(None)
 
     def __call__(self, *args, binding=None, handler=None, **kwargs):
         url = self.generate_url(binding, self.route)
         json, params = self._process_args(binding, *args, **kwargs)
         params = utils.dictionary_to_params(params)
         res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
-        if res.status_code >= 400:
-            code = res.status_code
-            default_error = RuntimeError
-            default_message = "Error: %s" % res.status_code
-            raise HTTP_EXCEPTIONS.get(code, default_error)(HTTP_MESSAGES.get(code, default_message), res.text)
+        utils.validate_response_status(res)
         return handler(res)
 
     def generate_url(self, binding, route):
@@ -524,10 +518,10 @@ class Resource(object):
 
     def save(self):
         if self.id is None:
-            assert isinstance(self.create, InstanceLinkProxy), "Invalid proxy type %s" % type(self.create)
+            assert isinstance(self.create, ObjectLinkProxy), "Invalid proxy type %s" % type(self.create)
             self._instance = self.create(self)
         else:
-            assert isinstance(self.update, InstanceLinkProxy), "Invalid proxy type %s" % type(self.create)
+            assert isinstance(self.update, ObjectLinkProxy), "Invalid proxy type %s" % type(self.create)
             self._instance = self.update(self)
 
     def refresh(self):
