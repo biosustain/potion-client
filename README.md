@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/biosustain/potion-client.svg?branch=master)](https://travis-ci.org/biosustain/potion-client)
+
 # Potion client
 
 A client for REST APIs documented using JSON-schema in general, and `Flask-Presst` as well as the upcoming `Flask-Potion` in particular.
