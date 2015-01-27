@@ -392,7 +392,6 @@ class Link(object):
         self.schema = schema
         self.target_schema = target_schema
         self.request_kwargs = requests_kwargs
-        self.client = None
 
     @property
     def return_type(self) -> type:
@@ -401,9 +400,6 @@ class Link(object):
         elif REF in self.target_schema:
             if self.target_schema[REF] == "#":
                 return object
-            else:
-                self.target_schema = self.client.resolve(self.target_schema[REF])
-                return self.return_type
         else:
             return None
 
