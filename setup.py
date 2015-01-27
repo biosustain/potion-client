@@ -22,7 +22,7 @@ setup(
     packages=find_packages(),
     install_requires=requirements,
     tests_requires=test_requirements,
-    author='João Cardoso and Lars Schöning',
+    author='Joao Cardoso and Lars Schoning',
     author_email='joaca@biosustain.dtu.dk',
     description='',
     license='Apache License Version 2.0',
