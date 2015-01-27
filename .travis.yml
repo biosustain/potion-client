@@ -3,8 +3,8 @@ python:
   - "3.3"
   - "3.4"
 install:
-  - "pip install ."
-  - pip install coveralls
-script: coverage run --source=potion_client setup.py test
+  - python setup.py install
+  - pip install coveralls nosetests httmock sqlalchemy flask-potion
+script: nosetests 
 after_success:
     - coveralls
