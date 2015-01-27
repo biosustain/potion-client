@@ -14,12 +14,14 @@
 
 from setuptools import setup, find_packages
 requirements = ['requests', 'jsonschema']
+test_requirements = ["Flask-Testing=>0.4.1", "flask-potion>=0.2.0", "httmock", "nose"]
 
 setup(
     name='gvc',
     version='0.0',
     packages=find_packages(),
     install_requires=requirements,
+    tests_requires=test_requirements,
     author='João Cardoso and Lars Schöning',
     author_email='joaca@biosustain.dtu.dk',
     description='',

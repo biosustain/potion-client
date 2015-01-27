@@ -1,5 +1,0 @@
-Flask-Testing
-flask-potion
-httmock
-nose
-

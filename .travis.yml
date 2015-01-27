@@ -3,9 +3,8 @@ python:
   - "3.3"
   - "3.4"
 install:
-  - python setup.py install
+  - python setup.py test
   - pip install coveralls
-  - pip install -r test_requirements.txt
-script: nosetests 
+script: nosetests
 after_success:
     - coveralls
