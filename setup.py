@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 from setuptools import setup, find_packages
-requirements = ['requests', 'jsonschema']
-test_requirements = ["Flask-Testing=>0.4.1", "flask-potion>=0.2.0", "httmock", "nose"]
 
+
+requirements = ['requests>=2.5', 'jsonschema>=2.4']
 setup(
-    name='gvc',
-    version='0.0',
-    packages=find_packages(),
+    name='potion-client',
+    version='0.1.0',
+    packages=find_packages(exclude=['*test*']),
     install_requires=requirements,
-    tests_requires=test_requirements,
-    author='Joao Cardoso and Lars Schoning',
+    setup_requires=["nose>=1.3"],
+    tests_require=["Flask-Testing>=0.4", "flask-potion>=0.2", "httmock>=1.2"],
+    author='João Cardoso and Lars Schöning',
     author_email='joaca@biosustain.dtu.dk',
     description='',
     license='Apache License Version 2.0',
@@ -34,4 +37,5 @@ setup(
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: Apache Software License'
     ],
+    test_suite='nose.collector'
 )
