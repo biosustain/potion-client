@@ -4,7 +4,8 @@ python:
   - "3.4"
 install:
   - python setup.py install
-  - pip install coveralls nose httmock sqlalchemy flask-potion
+  - pip install coveralls
+  - pip install -r test_requirements.txt
 script: nosetests 
 after_success:
     - coveralls
