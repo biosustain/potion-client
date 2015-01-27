@@ -44,7 +44,7 @@ class InstanceTestCase(MockAPITestCase):
 
     def setUp(self):
         super(InstanceTestCase, self).setUp()
-        self.time = datetime.fromtimestamp(1, timezone.utc)
+        self.time = datetime.fromtimestamp(0, timezone.utc)
         with HTTMock(self.get_mock):
             self.potion_client = Client()
 
