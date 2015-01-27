@@ -26,15 +26,14 @@ class Client(object):
         self._schema_cache = {}
 
         response = requests.get(base_url+schema_path, **requests_kwargs)
-        if response.status_code == 404:
-            raise NotFoundException()
+        utils.validate_response_status(response)
         self._schema = response.json()
         self._schema_cache[schema_path+"#"] = self._schema
 
         for name, desc in self._schema[PROPERTIES].items():
-            res = requests.get(self.base_url + desc[REF], **requests_kwargs)
-            utils.validate_response_status(res)
-            class_schema = res.json()
+            response = requests.get(self.base_url + desc[REF], **requests_kwargs)
+            utils.validate_response_status(response)
+            class_schema = response.json()
             resource = Resource.factory(desc.get(DOC, ""), name, class_schema, requests_kwargs, self)
             setattr(self, resource.__name__, resource)
             self._resources[name] = resource
