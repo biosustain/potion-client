@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/biosustain/potion-client.svg?branch=master)](https://travis-ci.org/biosustain/potion-client)
+[![Coverage Status](https://coveralls.io/repos/biosustain/potion-client/badge.svg?branch=master)](https://coveralls.io/r/biosustain/potion-client?branch=master)
 
 # Potion client
 
