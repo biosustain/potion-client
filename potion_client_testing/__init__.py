@@ -67,7 +67,7 @@ class MockResponseTool(object):
         return self.reply(self.client.delete(path))
 
     def reply(self, response):
-        content = "".join([b.decode(self.encoding) for b in response.response])
+        content = self.decode(response)
         res = requests.Response()
         res._content = content.encode(self.encoding)
         res._content_consumed = content
@@ -75,6 +75,9 @@ class MockResponseTool(object):
         res.encoding = self.encoding
         res.headers = response.headers
         return res
+
+    def decode(self, response):
+        return "".join([b.decode(self.encoding) for b in response.response])
 
 
 class MockAPITestCase(MockResponseTool, TestCase):

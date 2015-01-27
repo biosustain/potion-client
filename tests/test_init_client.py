@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from pprint import pprint
+import json
 from httmock import HTTMock
 from potion_client import Client
 from potion_client_testing import MockAPITestCase
@@ -25,5 +25,7 @@ class CreateClientTestCase(MockAPITestCase):
     def test_init_client(self):
         with HTTMock(self.get_mock):
             c = Client()
-            pprint(c._schema["properties"]["foo"])
             self.assertSetEqual(set(c._schema['properties'].keys()), {'foo', 'bar', 'baz'})
+            self.assertEqual(c._schema['properties']['foo'], json.loads(self.decode(self.client.get("/foo/schema"))))
+            self.assertEqual(c._schema['properties']['bar'], json.loads(self.decode(self.client.get("/bar/schema"))))
+            self.assertEqual(c._schema['properties']['baz'], json.loads(self.decode(self.client.get("/baz/schema"))))
