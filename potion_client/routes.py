@@ -19,7 +19,7 @@ import requests
 from potion_client import utils
 from .constants import *
 import logging
-from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES, OneOfException
+from potion_client.exceptions import OneOfException
 from potion_client import data_types
 
 logger = logging.getLogger(__name__)
