@@ -164,3 +164,7 @@ class InstanceTestCase(MockAPITestCase):
             foo = self._create_foo()
             foo.updateAttr3("value3")
             self.assertEqual(foo.readAttr3(), "value3")
+
+    def test_empty_instances(self):
+        with HTTMock(self.get_mock):
+            self.assertEqual(self.potion_client.Foo.instances(), [])

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from functools import partial
 import string
 from urllib.parse import urlparse
 from jsonschema import validate
@@ -33,6 +33,7 @@ class AttributeMapper(object):
     def __init__(self, definition):
         self.read_only = definition.get(READ_ONLY, False)
         self.required = type(None) in utils.type_for(definition.get(TYPE, "object"))
+        self.docstring = definition.get(DOC, None)
         self.definition = definition
 
         self._attributes = {}
@@ -162,6 +163,10 @@ class DynamicElement(object):
 
     def _resolve(self):
         pass
+
+    @property
+    def __doc__(self):
+        return self._link.__doc__
 
 
 class LinkProxy(DynamicElement):
@@ -384,12 +389,17 @@ class Route(object):
 
 
 class Link(object):
-    def __init__(self, route, method=GET, schema=None, target_schema=None, requests_kwargs=None):
+    def __init__(self, route, method=GET, schema=None, target_schema=None, requests_kwargs=None, docstring=None):
         self.route = route
         self.method = method
         self.schema = schema
         self.target_schema = target_schema
         self.request_kwargs = requests_kwargs
+        self._docstring = docstring
+
+    @property
+    def __doc__(self):
+        return self._docstring
 
     @property
     def return_type(self) -> type:
@@ -433,7 +443,7 @@ class Link(object):
 
     def _check_input(self, obj):
         if isinstance(obj, Resource):
-            return self._check_input(obj.instance)
+            return self._check_input(obj.valid_instance)
         elif isinstance(obj, (list, tuple)):
             return [self._check_input(el) for el in obj]
         elif isinstance(obj, dict):
@@ -457,6 +467,7 @@ class Link(object):
         return "[Link %s '%s']" % (self.method, self.route.path)
 
 
+# TODO: assign property to every attribute
 class Resource(object):
     client = None
     _schema = None
@@ -476,7 +487,7 @@ class Resource(object):
             setattr(self, name, LinkProxy(link=link).bind(self))
 
     @property
-    def instance(self):
+    def valid_instance(self):
         instance = {}
 
         for key in self._attributes.keys():
@@ -488,29 +499,34 @@ class Resource(object):
         return instance
 
     @property
+    def instance(self):
+        if self._instance is None:
+            self._ensure_instance()
+        return self._instance
+
+    @property
     def properties(self):
         return self._schema.get(PROPERTIES, {})
 
-    def __getitem__(self, item):
-        return self.__getattr__(item)
+    @classmethod
+    def _get_property(cls, name: str, self):
+        raw = self.instance[name]
+        return cls._attributes[name].resolve(raw, self.client)
 
-    def __getattr__(self, key):
-        if key in self._attributes:
-            self._ensure_instance()
-            attr = self._attributes[key]
-            item = self._instance.get(key, None)
-            return attr.resolve(item, self.client)
+    @classmethod
+    def _set_property(cls, name: str, self, value):
+        serialized = cls._attributes[name].serialize(value)
+        self.instance[name] = serialized
+
+    @classmethod
+    def _del_property(cls, name: str, self):
+        self.instance.pop(name, None)
+
+    def __getattr__(self, key: str):
+        if key.startswith("$"):
+            return self.instance[key]
         else:
             getattr(super(Resource, self), key, self)
-
-    def __setattr__(self, key, value):
-        assert not key.startswith("$"), "Invalid property %s" % key
-        if key in self._attributes:
-            attr = self._attributes[key]
-            self._ensure_instance()
-            self._instance[key] = attr.serialize(value)
-        else:
-            super(Resource, self).__setattr__(key, value)
 
     def _ensure_instance(self):
         if self._instance is None:
@@ -536,12 +552,6 @@ class Resource(object):
 
     def __dir__(self):
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
-
-    @property
-    def uri(self):
-        self._ensure_instance()
-        if URI in self._instance:
-            return self._instance[URI]
 
     def __str__(self):
         return "<%s %s: %s>" % (self.__class__, getattr(self, "id"), str(self._instance))
@@ -576,7 +586,8 @@ class Resource(object):
                         method=link_desc[METHOD],
                         schema=link_desc.get(SCHEMA, {}),
                         target_schema=link_desc.get(TARGET_SCHEMA, {}),
-                        requests_kwargs=requests_kwargs)
+                        requests_kwargs=requests_kwargs,
+                        docstring=link_desc.get(DOC, None))
 
             if route.is_instance:
                 resource._instance_links[link_desc[REL]] = link
@@ -584,6 +595,22 @@ class Resource(object):
                 setattr(resource, link_desc[REL], LinkProxy(link))
 
         for name, prop in schema[PROPERTIES].items():
-            resource._attributes[name] = AttributeMapper(prop)
+            attr = AttributeMapper(prop)
+            resource._attributes[name] = attr
+            property_name = name
+            if name.startswith("$"):
+                property_name = name.replace("$", "")
+            if attr.read_only:
+                setattr(resource, property_name, property(
+                    fget=partial(resource._get_property, name),
+                    doc=attr.docstring
+                ))
+            else:
+                setattr(resource, property_name, property(
+                    fget=partial(resource._get_property, name),
+                    fset=partial(resource._set_property, name),
+                    fdel=partial(resource._del_property, name),
+                    doc=attr.docstring
+                ))
 
         return resource
