@@ -32,8 +32,9 @@ _string_formatter = string.Formatter()
 class AttributeMapper(object):
     def __init__(self, definition):
         self.read_only = definition.get(READ_ONLY, False)
-        self.required = type(None) in utils.type_for(definition.get(TYPE, "object"))
-        self.docstring = definition.get(DOC, None)
+        self.additional_properties = definition.get(ADDITIONAL_PROPERTIES, False)
+
+        self.__doc__ = definition.get(DOC, None)
         self.definition = definition
 
         self._attributes = {}
@@ -45,50 +46,57 @@ class AttributeMapper(object):
                 self._attributes[name] = AttributeMapper(prop)
 
         elif ITEMS in self.definition:
-            self._attributes[ITEMS] = Items(self.definition[ITEMS])
+            self.definition = self.definition[ITEMS]
+            self.__class__ = Items
+            self._parse_definition()
         elif ONE_OF in self.definition:
-            self._attributes[ONE_OF] = OneOf(self.definition[ONE_OF])
+            self.definition = self.definition[ONE_OF]
+            self.__class__ = OneOf
+            self._parse_definition()
 
     @property
-    def type(self):
-        return utils.type_for(self.definition.get(TYPE, "object"))[0]
+    def required(self):
+        return type(None) in self.types
+
+    @property
+    def types(self):
+        return utils.type_for(self.definition.get(TYPE, "object"))
 
     def serialize(self, obj, valid=True):
-        if self.type is list:
-            value = [self._attributes[ITEMS].serialize(o) for o in obj]
-        elif self.type is dict:
-            if ONE_OF in self._attributes:
-                value = self._attributes[ONE_OF].serialize(obj)
+        if obj is None:
+            value = self.empty_value
+        elif dict in self.types:
+            value = {}
+            if self.additional_properties:
+                iterator = obj.keys()
             else:
-                value = {}
-                for key, attr in self._attributes.items():
-                    if key.startswith("$"):
-                        try:
-                            value[key] = data_types.for_key(key).serialize(obj)
-                        except NotImplementedError:
-                            val = obj.get(key, None)
-                            if val is not None:
-                                value[key] = val
-                    else:
+                iterator = self._attributes.keys()
+            for key in iterator:
+
+                if key.startswith("$"):
+                    try:
+                        val = data_types.for_key(key).serialize(obj)
+                    except NotImplementedError:
                         val = obj.get(key, None)
-                        if val is not None:
-                            value[key] = attr.serialize(val)
+                else:
+                    val = obj.get(key, None)
+                    if key in self._attributes:
+                        val = self._attributes[key].serialize(val)
+
+                if val is not None:
+                    value[key] = val
 
         else:
-            value = self.type(obj)
+            value = self.types[0](obj)
         if valid:
             validate(value, self.definition)
         return value
 
     def resolve(self, obj, client):
         if obj is None:
-            if self.type is list:
-                return []
-            else:
-                return None
-        if ITEMS in self.definition:
-            return [self._attributes[ITEMS].resolve(item, client) for item in obj]
-        elif PROPERTIES in self.definition:
+            return self.empty_value
+
+        if PROPERTIES in self.definition:
             key = list(self.definition[PROPERTIES].keys())[0]
             obj = data_types.for_key(key).resolve(obj, client)
 
@@ -96,27 +104,26 @@ class AttributeMapper(object):
 
     @property
     def empty_value(self):
-        if self.read_only:
+        if self.read_only or type(None) in self.types:
             return None
+        elif dict in self.types:
+            return {}
         else:
-            if self.type is list:
-                return []
-            elif self.type is dict:
-                return {}
-            else:
-                return None
+            return None
 
 
 class OneOf(AttributeMapper):
     def __init__(self, definitions):
+        self.definition = definitions
         super(OneOf, self).__init__({})
-        self._attributes = []
-        for definition in definitions:
-            self._attributes.append(AttributeMapper(definition))
+
+    def _parse_definition(self):
+        for index, definition in enumerate(self.definition):
+            self._attributes[index] = AttributeMapper(definition)
 
     def resolve(self, obj, client):
         errors = []
-        for attr in self._attributes:
+        for attr in self._attributes.values():
             try:
                 return attr.resolve(obj, client)
             except Exception as e:
@@ -125,30 +132,49 @@ class OneOf(AttributeMapper):
         raise OneOfException(errors)
 
     def serialize(self, obj, valid=True):
+        if obj is None:
+            return None
+
         errors = []
 
-        for attr in self._attributes:
+        for attr in self._attributes.values():
             try:
                 return attr.serialize(obj, valid)
             except Exception as e:
                 errors.append(e)
+        if self.required:
+            raise OneOfException(errors)
 
-        raise OneOfException(errors)
+    @property
+    def types(self):
+        seen = set()
+        all_types = [t for attr in self._attributes.values() for t in attr.types]
+        return [x for x in all_types if x not in seen and not seen.add(x)]
 
 
 class Items(AttributeMapper):
     def __init__(self, *args, **kwargs):
         super(Items, self).__init__(*args, **kwargs)
 
-    def serialize(self, elements, valid=True):
-        if elements is None and not self.required:
+    def serialize(self, iterable, valid=True):
+        if iterable is None and self.required:
             return []
 
-        assert isinstance(elements, list), "Items expects list"
-        return[super(Items, self).serialize(element, self.definition) for element in elements]
+        assert isinstance(iterable, list), "Items expects list"
+        return[super(Items, self).serialize(element, self.definition) for element in iterable]
 
+    @property
     def empty_value(self):
-        return []
+        if type(None) in self.types:
+            return None
+        else:
+            return []
+
+    def resolve(self, iterable, client):
+        if list is None:
+            return self.empty_value
+
+        return[super(Items, self).resolve(element, client) for element in iterable]
 
 
 class DynamicElement(object):
@@ -183,7 +209,7 @@ class LinkProxy(DynamicElement):
         return value
 
     def handler(self, res: requests.Response):
-        raise NotImplementedError
+        return res.json()
 
     def bind(self, instance):
         return self.return_type(link=self._link, binding=instance)
@@ -201,7 +227,7 @@ class LinkProxy(DynamicElement):
         return self.bind(instance or owner)
 
     def __repr__(self):
-        return "[Proxy %s '%s'] %s" % (self._link.method, self._link.route.path, self._kwargs)
+        return "Proxy %s '%s' %s" % (self._link.method, self._link.route.path, self._kwargs)
 
     def _parse_schema(self):
         if PROPERTIES in self._link.schema:
@@ -243,12 +269,10 @@ class LinkProxy(DynamicElement):
 
 
 class BoundedLinkProxy(LinkProxy):
+
     def __init__(self, **kwargs):
         super(BoundedLinkProxy, self).__init__(**kwargs)
         self._parse_schema()
-
-    def __repr__(self):
-        return "[BoundedProxy %s '%s' %s] %s" % (self._link.method, self._link.route.path, self._binding, self._kwargs)
 
     def __call__(self, *args, **kwargs):
         return self._resolve(*args, **kwargs)
@@ -259,12 +283,6 @@ class VoidLinkProxy(BoundedLinkProxy):
     def handler(self, res: requests.Response):
         return None
 
-    def __repr__(self):
-        return "[BoundedProxy %s '%s' %s] %s => None" % (self._link.method,
-                                                         self._link.route.path,
-                                                         self._binding,
-                                                         self._kwargs)
-
 
 class ListLinkProxy(BoundedLinkProxy):
     def __init__(self, links=None, **kwargs):
@@ -274,9 +292,13 @@ class ListLinkProxy(BoundedLinkProxy):
         self._links = links or {}
 
     def handler(self, res: requests.Response):
-        res.links.pop("self")
-        [self._create_link(name, link) for name, link in res.links.items()]
-        self._total = int(res.headers["X-Total-Count"])
+        try:
+            self._total = int(res.headers["X-Total-Count"])
+            res.links.pop("self", None)
+            [self._create_link(name, link) for name, link in res.links.items()]
+        except KeyError:
+            self._total = len(res.json())
+
         return res.json()
 
     def _create_link(self, name, link):
@@ -319,12 +341,6 @@ class ListLinkProxy(BoundedLinkProxy):
 
         return utils.evaluate_ref(self._collection[index][URI], self._binding.client, self._collection[index])
 
-    def __repr__(self):
-        return "[BoundedProxy %s '%s' %s] %s => Collection" % (self._link.method,
-                                                               self._link.route.path,
-                                                               self._binding,
-                                                               self._kwargs)
-
 
 class ListLinkIterator(object):
 
@@ -352,19 +368,10 @@ class ListLinkIterator(object):
 
 class ObjectLinkProxy(BoundedLinkProxy):
 
-    def handler(self, res: requests.Response):
-        return res.json()
-
     def __init__(self, **kwargs):
         binding = kwargs["binding"]
         assert isinstance(binding, (Resource, type(Resource))), "Invalid link type (%s) for object" % type(binding)
         super(ObjectLinkProxy, self).__init__(**kwargs)
-
-    def __repr__(self):
-        return "[BoundedProxy %s '%s' %s] %s => object" % (self._link.method,
-                                                           self._link.route.path,
-                                                           self._binding,
-                                                           self._kwargs)
 
     def __call__(self, *args, **kwargs):
         return self._resolve(*args, **kwargs)
@@ -395,11 +402,8 @@ class Link(object):
         self.schema = schema
         self.target_schema = target_schema
         self.request_kwargs = requests_kwargs
-        self._docstring = docstring
-
-    @property
-    def __doc__(self):
-        return self._docstring
+        self.__doc__ = docstring
+        self._attributes = {}
 
     @property
     def return_type(self) -> type:
@@ -411,11 +415,21 @@ class Link(object):
         else:
             return type(None)
 
+    @property
+    def input_type(self) -> type:
+        if TYPE in self.schema:
+            return utils.type_for(self.schema[TYPE])[0]
+        elif REF in self.schema:
+            if self.schema[REF] == "#":
+                return object
+        else:
+            return type(None)
+
     def __call__(self, *args, binding=None, handler=None, **kwargs):
         url = self.generate_url(binding, self.route)
-        json, params = self._process_args(binding, *args, **kwargs)
-        params = utils.dictionary_to_params(params)
-        res = requests.request(self.method, url=url, json=json, params=params, **self.request_kwargs)
+        params = utils.dictionary_to_params(kwargs)
+        body = self._process_args(args)
+        res = requests.request(self.method, url=url, json=body, params=params, **self.request_kwargs)
         utils.validate_response_status(res)
         return handler(res)
 
@@ -429,34 +443,35 @@ class Link(object):
         logger.debug("Generated url: %s" % url)
         return url
 
-    def _process_args(self, binding, *args, **kwargs):
-        json, params = None, {}
-        if len(args) == 1:
-            args = args[0]
-        if self.method in [POST, PATCH]:
-            args = self._check_input(args)
-            json = self._validate_in(args, binding)
+    def _process_args(self, args):
+        if self.input_type is list:
+            ret = []
+            for arg in args:
+                if isinstance(arg, Resource):
+                    ret.append(arg.valid_instance)
+                else:
+                    ret.append(arg)
+            return ret
+        elif self.input_type in [dict, object]:
+            if len(args) == 1:
+                if isinstance(args[0], Resource):
+                    return args[0].valid_instance
+                else:
+                    return args[0]
+            elif len(args) == 0:
+                return None
+            else:
+                raise AttributeError
+        elif self.input_type in [float, int, str, bool]:
+            if len(args) == 1:
+                return self.input_type(args[0])
+            elif len(args) == 0:
+                return None
+            else:
+                raise AttributeError
+
         else:
-            params = self._validate_in(kwargs, binding)
-
-        return json, params
-
-    def _check_input(self, obj):
-        if isinstance(obj, Resource):
-            return self._check_input(obj.valid_instance)
-        elif isinstance(obj, (list, tuple)):
-            return [self._check_input(el) for el in obj]
-        elif isinstance(obj, dict):
-            for key, value in obj.items():
-                obj[key] = self._check_input(value)
-            return obj
-        else:
-            return obj
-
-    def _validate_in(self, params, binding):
-        if REF in self.schema and self.schema[REF] == "#":
-            self.schema = getattr(binding, "_schema")
-        return utils.validate_schema(self.schema, params)
+            return None
 
     def _validate_out(self, out, binding):
         if REF in self.schema and self.schema[REF] == "#":
@@ -467,7 +482,6 @@ class Link(object):
         return "[Link %s '%s']" % (self.method, self.route.path)
 
 
-# TODO: assign property to every attribute
 class Resource(object):
     client = None
     _schema = None
@@ -475,12 +489,18 @@ class Resource(object):
     _self_route = None
     _attributes = None
 
-    def __init__(self, oid=None, instance=None):
+    def __init__(self, oid=None, instance=None, **kwargs):
         self._create_proxies()
         self._id = oid
         self._instance = instance
         if oid is None:  # make a new object
             self._instance = {}
+
+        for key, value in kwargs.items():
+            try:
+                setattr(self, key, value)
+            except KeyError:
+                pass
 
     def _create_proxies(self):
         for name, link in self._instance_links.items():
@@ -510,8 +530,12 @@ class Resource(object):
 
     @classmethod
     def _get_property(cls, name: str, self):
-        raw = self.instance[name]
-        return cls._attributes[name].resolve(raw, self.client)
+        attr = cls._attributes[name]
+        raw = self.instance.get(name, None)
+        if raw is None:
+            raw = attr.empty_value
+        self._instance[name] = raw
+        return attr.resolve(raw, self.client)
 
     @classmethod
     def _set_property(cls, name: str, self, value):
@@ -582,11 +606,8 @@ class Resource(object):
                 route = Route(link_desc[HREF])
                 routes[link_desc[HREF]] = route
 
-            link = Link(route,
-                        method=link_desc[METHOD],
-                        schema=link_desc.get(SCHEMA, {}),
-                        target_schema=link_desc.get(TARGET_SCHEMA, {}),
-                        requests_kwargs=requests_kwargs,
+            link = Link(route, method=link_desc[METHOD], schema=link_desc.get(SCHEMA, {}),
+                        target_schema=link_desc.get(TARGET_SCHEMA, {}), requests_kwargs=requests_kwargs,
                         docstring=link_desc.get(DOC, None))
 
             if route.is_instance:
@@ -601,16 +622,11 @@ class Resource(object):
             if name.startswith("$"):
                 property_name = name.replace("$", "")
             if attr.read_only:
-                setattr(resource, property_name, property(
-                    fget=partial(resource._get_property, name),
-                    doc=attr.docstring
-                ))
+                setattr(resource, property_name, property(fget=partial(resource._get_property, name), doc=attr.__doc__))
             else:
-                setattr(resource, property_name, property(
-                    fget=partial(resource._get_property, name),
-                    fset=partial(resource._set_property, name),
-                    fdel=partial(resource._del_property, name),
-                    doc=attr.docstring
-                ))
+                setattr(resource, property_name, property(fget=partial(resource._get_property, name),
+                                                          fset=partial(resource._set_property, name),
+                                                          fdel=partial(resource._del_property, name),
+                                                          doc=attr.__doc__))
 
         return resource
