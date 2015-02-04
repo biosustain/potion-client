@@ -110,6 +110,7 @@ class MockAPITestCase(MockResponseTool, TestCase):
 
         class Baz(sa.Model):
             id = sa.Column(sa.Integer, primary_key=True)
+            attr1 = sa.Column(sa.Float, nullable=False)
             foo_id = sa.Column(sa.Integer, sa.ForeignKey(Foo.id), nullable=False)
 
         sa.create_all()
