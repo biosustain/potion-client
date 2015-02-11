@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from functools import partial
+import json
 import string
 from urllib.parse import urlparse
 from jsonschema import validate
@@ -29,7 +30,7 @@ logger.level = logging.DEBUG
 _string_formatter = string.Formatter()
 
 
-class AttributeMapper(object):
+class Attribute(object):
     def __init__(self, definition):
         self.read_only = definition.get(READ_ONLY, False)
         self.additional_properties = definition.get(ADDITIONAL_PROPERTIES, False)
@@ -43,7 +44,7 @@ class AttributeMapper(object):
     def _parse_definition(self):
         if PROPERTIES in self.definition:
             for name, prop in self.definition[PROPERTIES].items():
-                self._attributes[name] = AttributeMapper(prop)
+                self._attributes[name] = Attribute(prop)
 
         elif ITEMS in self.definition:
             self.definition = self.definition[ITEMS]
@@ -53,6 +54,16 @@ class AttributeMapper(object):
             self.definition = self.definition[ONE_OF]
             self.__class__ = OneOf
             self._parse_definition()
+        elif ANY_OF in self.definition:
+            self.definition = self.definition[ANY_OF]
+            self.__class__ = AnyOf
+            self._parse_definition()
+
+        elif isinstance(self.additional_properties, dict):
+            if self.additional_properties[TYPE] == "object":
+                self.__class__ = AttributeMapped
+                self._parse_definition()
+
 
     @property
     def required(self):
@@ -72,7 +83,6 @@ class AttributeMapper(object):
             else:
                 iterator = self._attributes.keys()
             for key in iterator:
-
                 if key.startswith("$"):
                     try:
                         val = data_types.for_key(key).serialize(obj)
@@ -112,14 +122,14 @@ class AttributeMapper(object):
             return None
 
 
-class OneOf(AttributeMapper):
+class OneOf(Attribute):
     def __init__(self, definitions):
         self.definition = definitions
         super(OneOf, self).__init__({})
 
     def _parse_definition(self):
         for index, definition in enumerate(self.definition):
-            self._attributes[index] = AttributeMapper(definition)
+            self._attributes[index] = Attribute(definition)
 
     def resolve(self, obj, client):
         errors = []
@@ -152,7 +162,39 @@ class OneOf(AttributeMapper):
         return [x for x in all_types if x not in seen and not seen.add(x)]
 
 
-class Items(AttributeMapper):
+class AnyOf(OneOf):
+    pass
+
+
+class AttributeMapped(Attribute):
+
+    def _parse_definition(self):
+            self._value_attribute = Attribute(self.additional_properties)
+
+    def serialize(self, obj, valid=True):
+        assert isinstance(obj, dict)
+        if obj is None:
+            value = self.empty_value
+        else:
+            value = {}
+            for key in obj:
+                value[key] = self._value_attribute.serialize(obj[key])
+
+        return value
+
+    def resolve(self, obj, client):
+        if obj is None:
+            value = self.empty_value
+        else:
+            assert isinstance(obj, dict)
+            value = {}
+            for key in obj:
+                value[key] = self._value_attribute.resolve(obj[key], client)
+
+        return value
+
+
+class Items(Attribute):
     def __init__(self, *args, **kwargs):
         super(Items, self).__init__(*args, **kwargs)
 
@@ -233,7 +275,7 @@ class LinkProxy(DynamicElement):
         if PROPERTIES in self._link.schema:
             properties = self._link.schema[PROPERTIES]
             for prop in properties.keys():
-                self._attributes[prop] = AttributeMapper(properties[prop])
+                self._attributes[prop] = Attribute(properties[prop])
                 setattr(self, prop, self._proxy(prop))
 
     def _parse_kwarg(self, key, value):
@@ -403,7 +445,7 @@ class Link(object):
         self.target_schema = target_schema
         self.request_kwargs = requests_kwargs
         self.__doc__ = docstring
-        self._attributes = {}
+        self._serializer = {}
 
     @property
     def return_type(self) -> type:
@@ -426,6 +468,10 @@ class Link(object):
             return type(None)
 
     def __call__(self, *args, binding=None, handler=None, **kwargs):
+        if REF in self.schema and self.schema[REF] == "#":
+            self.schema = binding._schema
+        if REF in self.target_schema and self.target_schema[REF] == "#":
+            self.target_schema = binding._schema
         url = self.generate_url(binding, self.route)
         params = utils.dictionary_to_params(kwargs)
         body = self._process_args(args)
@@ -444,39 +490,18 @@ class Link(object):
         return url
 
     def _process_args(self, args):
+        self._serializer = self._serializer or Attribute(self.schema or {})
         if self.input_type is list:
-            ret = []
-            for arg in args:
-                if isinstance(arg, Resource):
-                    ret.append(arg.valid_instance)
-                else:
-                    ret.append(arg)
-            return ret
-        elif self.input_type in [dict, object]:
-            if len(args) == 1:
-                if isinstance(args[0], Resource):
-                    return args[0].valid_instance
-                else:
-                    return args[0]
-            elif len(args) == 0:
-                return None
-            else:
-                raise AttributeError
-        elif self.input_type in [float, int, str, bool]:
-            if len(args) == 1:
-                return self.input_type(args[0])
-            elif len(args) == 0:
-                return None
-            else:
-                raise AttributeError
-
+            return self._serializer.serialize(args)
         else:
-            return None
-
-    def _validate_out(self, out, binding):
-        if REF in self.schema and self.schema[REF] == "#":
-            self.target_schema = getattr(binding, "_schema")
-        return utils.validate_schema(self.target_schema, out)
+            if len(args) > 0:
+                obj = args[0]
+                if isinstance(obj, Resource):
+                    return obj.valid_instance
+                else:
+                    return self._serializer.serialize(args[0])
+            else:
+                return None
 
     def __repr__(self):
         return "[Link %s '%s']" % (self.method, self.route.path)
@@ -552,6 +577,9 @@ class Resource(object):
         else:
             getattr(super(Resource, self), key, self)
 
+    def __getitem__(self, key: str):
+        return self.instance[key]
+
     def _ensure_instance(self):
         if self._instance is None:
             self._instance = self.self()
@@ -579,6 +607,9 @@ class Resource(object):
 
     def __str__(self):
         return "<%s %s: %s>" % (self.__class__, getattr(self, "id"), str(self._instance))
+
+    def __repr__(self):
+        return json.dumps(self.valid_instance)
 
     def __eq__(self, other):
         if self.uri and other.uri:
@@ -616,7 +647,7 @@ class Resource(object):
                 setattr(resource, link_desc[REL], LinkProxy(link))
 
         for name, prop in schema[PROPERTIES].items():
-            attr = AttributeMapper(prop)
+            attr = Attribute(prop)
             resource._attributes[name] = attr
             property_name = name
             if name.startswith("$"):
