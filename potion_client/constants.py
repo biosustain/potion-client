@@ -44,6 +44,7 @@ ADDITIONAL_PROPERTIES = 'additionalProperties'
 FORMAT = "format"
 READ_ONLY = "readOnly"
 ONE_OF = "oneOf"
+ANY_OF = "anyOf"
 
 
 # Expected types
