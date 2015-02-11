@@ -39,10 +39,6 @@ class Client(object):
             self._resources[name] = resource
             self._schema_cache[desc[REF]] = class_schema
             self._schema[PROPERTIES][name] = class_schema
-            for prop in class_schema[PROPERTIES].keys():
-                p = class_schema[PROPERTIES][prop]
-                if REF in p:
-                    class_schema[PROPERTIES][prop] = self.resolve(p[REF], class_schema)
 
     def resource(self, name):
         return self._resources[name]
