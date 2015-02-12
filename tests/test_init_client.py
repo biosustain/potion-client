@@ -25,7 +25,11 @@ class CreateClientTestCase(MockAPITestCase):
     def test_init_client(self):
         with HTTMock(self.get_mock):
             c = Client()
-            self.assertSetEqual(set(c._schema['properties'].keys()), {'foo', 'bar', 'baz'})
+            self.assertSetEqual(set(c._schema['properties'].keys()),
+                                {'foo', 'bar', 'baz', 'biz', 'foo_with_mapped_biz'})
             self.assertEqual(c._schema['properties']['foo'], json.loads(self.decode(self.client.get("/foo/schema"))))
             self.assertEqual(c._schema['properties']['bar'], json.loads(self.decode(self.client.get("/bar/schema"))))
             self.assertEqual(c._schema['properties']['baz'], json.loads(self.decode(self.client.get("/baz/schema"))))
+            self.assertEqual(c._schema['properties']['biz'], json.loads(self.decode(self.client.get("/biz/schema"))))
+            self.assertEqual(c._schema['properties']['foo_with_mapped_biz'],
+                             json.loads(self.decode(self.client.get("/foo_with_mapped_biz/schema"))))

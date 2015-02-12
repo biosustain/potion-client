@@ -13,18 +13,27 @@
 # limitations under the License.
 
 from datetime import datetime, timezone
+from pprint import pprint
 from httmock import HTTMock
 from potion_client import Client
+from potion_client.routes import AttributeMappedDict
 from potion_client_testing import MockAPITestCase
 
 
-class InstanceTestCase(MockAPITestCase):
+class InstancesTestCase(MockAPITestCase):
 
     def _create_foo(self, attr1="value1", attr2="value2"):
         foo = self.potion_client.Foo()
         foo.attr1 = attr1
         foo.attr2 = attr2
         foo.attr3 = "attr3"
+        foo.date = self.time
+        foo.save()
+        return foo
+
+    def _create_foo_with_mapped_biz(self, attr1="value1"):
+        foo = self.potion_client.FooWithMappedBiz()
+        foo.attr1 = attr1
         foo.date = self.time
         foo.save()
         return foo
@@ -36,13 +45,18 @@ class InstanceTestCase(MockAPITestCase):
         bar.save()
         return bar
 
-    def _create_baz(self, attr1=1.0, foo=None):
-        baz = self.potion_client.Baz(attr1=attr1, foo=foo)
+    def _create_baz(self, attr1=1.0, attr2=None, foo=None):
+        baz = self.potion_client.Baz(attr1=attr1, foo=foo, attr2=None)
         baz.save()
         return baz
 
+    def _create_biz(self, attr1="value1", attr2=1.0):
+        biz = self.potion_client.Biz(attr1=attr1, attr2=attr2)
+        biz.save()
+        return biz
+
     def setUp(self):
-        super(InstanceTestCase, self).setUp()
+        MockAPITestCase.setUp(self)
         self.time = datetime.fromtimestamp(0, timezone.utc)
         with HTTMock(self.get_mock):
             self.potion_client = Client()
@@ -152,11 +166,32 @@ class InstanceTestCase(MockAPITestCase):
             for key in expected.keys():
                 self.assertEqual(getattr(foo, key), expected[key])
 
-    # TODO: it doesn't not return a json response
     def test_delete_foo(self):
         with HTTMock(self.delete_mock, self.post_mock):
             foo = self._create_foo()
             self.assertEqual(foo.destroy(), None)
+
+    def test_any_field(self):
+        with HTTMock(self.post_mock, self.get_mock, self.patch_mock):
+            pprint(self.potion_client.Baz._schema['properties'])
+            foo = self._create_foo()
+            baz = self._create_baz(attr1=2, foo=foo)
+            self.assertEqual(baz.attr2, None)
+            baz.attr2 = {}
+            baz.save()
+            self.assertEqual(baz.attr2, {})
+            baz.attr2 = {"a": 1}
+            baz.save()
+            self.assertEqual(baz.attr2, {"a": 1})
+            baz.attr2 = None
+            baz.save()
+            self.assertEqual(baz.attr2, None)
+            baz.attr2 = ["a", 2, 2.1, {"a": 2}]
+            baz.save()
+            self.assertEqual(baz.attr2,  ["a", 2, 2.1, {"a": 2}])
+            baz.attr2 = {"a": [123, 123, 456], "b": {}}
+            baz.save()
+            self.assertEqual(baz.attr2, {"a": [123, 123, 456], "b": {}})
 
     def test_item_attribute(self):
         with HTTMock(self.post_mock, self.get_mock, self.patch_mock):
@@ -167,3 +202,16 @@ class InstanceTestCase(MockAPITestCase):
     def test_empty_instances(self):
         with HTTMock(self.get_mock):
             self.assertEqual(self.potion_client.Foo.instances(), [])
+
+    def test_mapped_attribute(self):
+        with HTTMock(self.get_mock, self.post_mock, self.patch_mock):
+            foo = self._create_foo_with_mapped_biz()
+            self.assertIsInstance(foo.bizes, AttributeMappedDict)
+            biz = self._create_biz()
+            foo.bizes["bizzy1"] = biz
+            foo.save()
+            self.assertEqual(foo.bizes["bizzy1"], biz)
+            foo = self.potion_client.FooWithMappedBiz(foo.id)
+            self.assertEqual(foo.bizes["bizzy1"], biz)
+            biz = self.potion_client.Biz(biz.id)
+            self.assertEqual(foo.bizes["bizzy1"], biz)
