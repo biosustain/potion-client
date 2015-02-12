@@ -14,8 +14,18 @@
 import json
 import string
 from jsonschema import validate
-from potion_client.constants import *
 from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
+
+# Expected types
+TYPES = {
+    "array": list,
+    "object": dict,
+    "null": type(None),
+    "integer": int,
+    "string": str,
+    "boolean": bool,
+    "number": float
+}
 
 
 def path_for_url(url):
@@ -91,3 +101,18 @@ def evaluate_ref(uri, client, instance=None):
     resource_name, resource_id = parse_uri(uri)
     resource_class = client.resource(resource_name)
     return resource_class(oid=resource_id, instance=instance)
+
+
+def same_values_in(collection_a, collection_b):
+    set_a = set(collection_a)
+    set_b = set(collection_b)
+    return len(set_a) == len(set_b) and set_a.issubset(set_b) and set_b.issubset(set_a)
+
+
+class JSONEncoder(json.JSONEncoder):
+
+    def default(self, obj):
+        if hasattr(obj, "to_json"):
+            return obj.to_json
+        else:
+            return super(JSONEncoder, self).default(obj)

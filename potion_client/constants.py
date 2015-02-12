@@ -46,14 +46,4 @@ READ_ONLY = "readOnly"
 ONE_OF = "oneOf"
 ANY_OF = "anyOf"
 
-
-# Expected types
-TYPES = {
-    "array": list,
-    "object": dict,
-    "null": type(None),
-    "integer": int,
-    "string": str,
-    "boolean": bool,
-    "number": float
-}
+ALL_TYPES = ["null", "string", "number", "boolean", "object", "array"]

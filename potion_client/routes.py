@@ -11,212 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import partial
-import json
-import string
-from urllib.parse import urlparse
-from jsonschema import validate
-import requests
+
 from potion_client import utils
-from .constants import *
-import logging
-from potion_client.exceptions import OneOfException
 from potion_client import data_types
+from potion_client.exceptions import OneOfException
+from potion_client.constants import *
+
+from json import dumps
+from functools import partial
+from urllib.parse import urlparse
+
+import string
+import requests
+import logging
+
 
 logger = logging.getLogger(__name__)
 logger.level = logging.DEBUG
 
 
 _string_formatter = string.Formatter()
-
-
-class Attribute(object):
-    def __init__(self, definition):
-        self.read_only = definition.get(READ_ONLY, False)
-        self.additional_properties = definition.get(ADDITIONAL_PROPERTIES, False)
-
-        self.__doc__ = definition.get(DOC, None)
-        self.definition = definition
-
-        self._attributes = {}
-        self._parse_definition()
-
-    def _parse_definition(self):
-        if PROPERTIES in self.definition:
-            for name, prop in self.definition[PROPERTIES].items():
-                self._attributes[name] = Attribute(prop)
-
-        elif ITEMS in self.definition:
-            self.definition = self.definition[ITEMS]
-            self.__class__ = Items
-            self._parse_definition()
-        elif ONE_OF in self.definition:
-            self.definition = self.definition[ONE_OF]
-            self.__class__ = OneOf
-            self._parse_definition()
-        elif ANY_OF in self.definition:
-            self.definition = self.definition[ANY_OF]
-            self.__class__ = AnyOf
-            self._parse_definition()
-
-        elif isinstance(self.additional_properties, dict):
-            if self.additional_properties[TYPE] == "object":
-                self.__class__ = AttributeMapped
-                self._parse_definition()
-
-
-    @property
-    def required(self):
-        return type(None) in self.types
-
-    @property
-    def types(self):
-        return utils.type_for(self.definition.get(TYPE, "object"))
-
-    def serialize(self, obj, valid=True):
-        if obj is None:
-            value = self.empty_value
-        elif dict in self.types:
-            value = {}
-            if self.additional_properties:
-                iterator = obj.keys()
-            else:
-                iterator = self._attributes.keys()
-            for key in iterator:
-                if key.startswith("$"):
-                    try:
-                        val = data_types.for_key(key).serialize(obj)
-                    except NotImplementedError:
-                        val = obj.get(key, None)
-                else:
-                    val = obj.get(key, None)
-                    if key in self._attributes:
-                        val = self._attributes[key].serialize(val)
-
-                if val is not None:
-                    value[key] = val
-
-        else:
-            value = self.types[0](obj)
-        if valid:
-            validate(value, self.definition)
-        return value
-
-    def resolve(self, obj, client):
-        if obj is None:
-            return self.empty_value
-
-        if PROPERTIES in self.definition:
-            key = list(self.definition[PROPERTIES].keys())[0]
-            obj = data_types.for_key(key).resolve(obj, client)
-
-        return obj
-
-    @property
-    def empty_value(self):
-        if self.read_only or type(None) in self.types:
-            return None
-        elif dict in self.types:
-            return {}
-        else:
-            return None
-
-
-class OneOf(Attribute):
-    def __init__(self, definitions):
-        self.definition = definitions
-        super(OneOf, self).__init__({})
-
-    def _parse_definition(self):
-        for index, definition in enumerate(self.definition):
-            self._attributes[index] = Attribute(definition)
-
-    def resolve(self, obj, client):
-        errors = []
-        for attr in self._attributes.values():
-            try:
-                return attr.resolve(obj, client)
-            except Exception as e:
-                errors.append(e)
-
-        raise OneOfException(errors)
-
-    def serialize(self, obj, valid=True):
-        if obj is None:
-            return None
-
-        errors = []
-
-        for attr in self._attributes.values():
-            try:
-                return attr.serialize(obj, valid)
-            except Exception as e:
-                errors.append(e)
-        if self.required:
-            raise OneOfException(errors)
-
-    @property
-    def types(self):
-        seen = set()
-        all_types = [t for attr in self._attributes.values() for t in attr.types]
-        return [x for x in all_types if x not in seen and not seen.add(x)]
-
-
-class AnyOf(OneOf):
-    pass
-
-
-class AttributeMapped(Attribute):
-
-    def _parse_definition(self):
-            self._value_attribute = Attribute(self.additional_properties)
-
-    def serialize(self, obj, valid=True):
-        assert isinstance(obj, dict)
-        if obj is None:
-            value = self.empty_value
-        else:
-            value = {}
-            for key in obj:
-                value[key] = self._value_attribute.serialize(obj[key])
-
-        return value
-
-    def resolve(self, obj, client):
-        if obj is None:
-            value = self.empty_value
-        else:
-            assert isinstance(obj, dict)
-            value = {}
-            for key in obj:
-                value[key] = self._value_attribute.resolve(obj[key], client)
-
-        return value
-
-
-class Items(Attribute):
-    def __init__(self, *args, **kwargs):
-        super(Items, self).__init__(*args, **kwargs)
-
-    def serialize(self, iterable, valid=True):
-        if iterable is None and self.required:
-            return []
-
-        assert isinstance(iterable, list), "Items expects list"
-        return[super(Items, self).serialize(element, self.definition) for element in iterable]
-
-    @property
-    def empty_value(self):
-        if type(None) in self.types:
-            return None
-        else:
-            return []
-
-    def resolve(self, iterable, client):
-        if list is None:
-            return self.empty_value
-
-        return[super(Items, self).resolve(element, client) for element in iterable]
 
 
 class DynamicElement(object):
@@ -474,8 +288,9 @@ class Link(object):
             self.target_schema = binding._schema
         url = self.generate_url(binding, self.route)
         params = utils.dictionary_to_params(kwargs)
-        body = self._process_args(args)
-        res = requests.request(self.method, url=url, json=body, params=params, **self.request_kwargs)
+        args = self._process_args(args)
+        data = dumps(args, cls=utils.JSONEncoder)
+        res = requests.request(self.method, url=url, data=data, params=params, **self.request_kwargs)
         utils.validate_response_status(res)
         return handler(res)
 
@@ -507,6 +322,244 @@ class Link(object):
         return "[Link %s '%s']" % (self.method, self.route.path)
 
 
+class Attribute(object):
+    def __init__(self, definition):
+        self.read_only = definition.get(READ_ONLY, False)
+        self.additional_properties = definition.get(ADDITIONAL_PROPERTIES, False)
+
+        self.__doc__ = definition.get(DOC, None)
+        self.definition = definition
+
+        self._attributes = {}
+        self._parse_definition()
+
+    def _parse_definition(self):
+        if PROPERTIES in self.definition:
+            for name, prop in self.definition[PROPERTIES].items():
+                self._attributes[name] = Attribute(prop)
+
+        elif ITEMS in self.definition:
+            self.definition = self.definition[ITEMS]
+            self.__class__ = Items
+            self._parse_definition()
+        elif ONE_OF in self.definition:
+            self.definition = self.definition[ONE_OF]
+            self.__class__ = OneOf
+            self._parse_definition()
+        elif ANY_OF in self.definition:
+            self.definition = self.definition[ANY_OF]
+            self.__class__ = AnyOf
+            self._parse_definition()
+        elif TYPE in self.definition and utils.same_values_in(self.definition[TYPE], ALL_TYPES):
+            self.__class__ = AnyObject
+            self._parse_definition()
+
+        elif isinstance(self.additional_properties, dict):
+            if self.additional_properties[TYPE] == "object":
+                self.__class__ = AttributeMapped
+                self._parse_definition()
+
+
+    @property
+    def required(self):
+        return type(None) in self.types
+
+    @property
+    def types(self):
+        return utils.type_for(self.definition.get(TYPE, "object"))
+
+    def serialize(self, obj, valid=True):
+        if obj is None:
+            value = self.empty_value
+        elif dict in self.types:
+            value = {}
+            if self.additional_properties:
+                iterator = obj.keys()
+            else:
+                iterator = self._attributes.keys()
+            for key in iterator:
+                if key.startswith("$"):
+                    try:
+                        val = data_types.for_key(key).serialize(obj)
+                    except NotImplementedError:
+                        val = obj.get(key, None)
+                else:
+                    val = obj.get(key, None)
+                    if key in self._attributes:
+                        val = self._attributes[key].serialize(val)
+
+                if val is not None:
+                    value[key] = val
+
+        else:
+            value = self.types[0](obj)
+        if valid:
+            utils.validate(value, self.definition)
+        return value
+
+    def resolve(self, obj, client):
+        if obj is None:
+            return self.empty_value
+
+        if PROPERTIES in self.definition:
+            key = list(self.definition[PROPERTIES].keys())[0]
+            obj = data_types.for_key(key).resolve(obj, client)
+
+        return obj
+
+    @property
+    def empty_value(self):
+        if self.read_only or type(None) in self.types:
+            return None
+        elif dict in self.types:
+            return {}
+        else:
+            return None
+
+
+class OneOf(Attribute):
+    def __init__(self, definitions):
+        self.definition = definitions
+        super(OneOf, self).__init__({})
+
+    def _parse_definition(self):
+        for index, definition in enumerate(self.definition):
+            self._attributes[index] = Attribute(definition)
+
+    def resolve(self, obj, client):
+        errors = []
+        for attr in self._attributes.values():
+            try:
+                return attr.resolve(obj, client)
+            except Exception as e:
+                errors.append(e)
+
+        raise OneOfException(errors)
+
+    def serialize(self, obj, valid=True):
+        if obj is None:
+            return None
+
+        errors = []
+
+        for attr in self._attributes.values():
+            try:
+                return attr.serialize(obj, valid)
+            except Exception as e:
+                errors.append(e)
+        if self.required:
+            raise OneOfException(errors)
+
+    @property
+    def types(self):
+        seen = set()
+        all_types = [t for attr in self._attributes.values() for t in attr.types]
+        return [x for x in all_types if x not in seen and not seen.add(x)]
+
+
+class AnyOf(OneOf):
+    pass
+
+
+class AnyObject(Attribute):
+
+    def _parse_definition(self):
+        pass
+
+    def serialize(self, obj, valid=True):
+        utils.validate_schema(self.definition, obj)
+
+        return obj
+
+    def resolve(self, obj, client):
+        return obj
+
+
+class AttributeMapped(Attribute):
+
+    def _parse_definition(self):
+            self._value_attribute = Attribute(self.additional_properties)
+
+    def serialize(self, obj, valid=True):
+        if obj is None:
+            ret = self.empty_value
+        else:
+            ret = obj
+
+        utils.validate_schema(self.definition, ret.to_json)
+
+        return ret
+
+    def resolve(self, obj, client):
+        if obj is not None:
+            if isinstance(obj, dict):
+                ret = self.empty_value
+                for key in obj.keys():
+                    ret[key] = self._value_attribute.resolve(obj[key], client)
+            elif isinstance(obj, AttributeMappedDict):
+                ret = obj
+        else:
+            ret = self.empty_value
+        return ret
+
+    @property
+    def empty_value(self):
+        return AttributeMappedDict(self._value_attribute)
+
+
+class Items(Attribute):
+    def __init__(self, *args, **kwargs):
+        super(Items, self).__init__(*args, **kwargs)
+
+    def serialize(self, iterable, valid=True):
+        if iterable is None and self.required:
+            return []
+
+        assert isinstance(iterable, list), "Items expects list"
+        return[super(Items, self).serialize(element, self.definition) for element in iterable]
+
+    @property
+    def empty_value(self):
+        if type(None) in self.types:
+            return None
+        else:
+            return []
+
+    def resolve(self, iterable, client):
+        if list is None:
+            return self.empty_value
+
+        return[super(Items, self).resolve(element, client) for element in iterable]
+
+
+class AttributeMappedDict(object):
+    def __init__(self, attribute):
+        assert isinstance(attribute, Attribute)
+        self._raw = dict()
+        self._resolved = dict()
+        self.attribute = attribute
+
+    def __setitem__(self, key, value):
+        self._raw[key] = self.attribute.serialize(value)
+        self._resolved[key] = value
+
+    def __getitem__(self, key):
+        try:
+            return self._resolved[key]
+        except KeyError:
+            raise KeyError(key)
+
+    def keys(self):
+        return self._raw.keys()
+
+    @property
+    def to_json(self):
+        return self._raw
+
+    def __repr__(self):
+        return "[AttributeMappedDict %s]" % self._raw
+
+
 class Resource(object):
     client = None
     _schema = None
@@ -536,11 +589,11 @@ class Resource(object):
         instance = {}
 
         for key in self._attributes.keys():
+
             attr = self._attributes[key]
             value = self._instance.get(key, attr.empty_value)
-            if not attr.read_only and value is not None:
+            if not attr.read_only:
                 instance[key] = value
-
         return instance
 
     @property
@@ -559,13 +612,14 @@ class Resource(object):
         raw = self.instance.get(name, None)
         if raw is None:
             raw = attr.empty_value
-        self._instance[name] = raw
+            self._instance[name] = raw
+            print("Setting", name, "=", raw)
         return attr.resolve(raw, self.client)
 
     @classmethod
-    def _set_property(cls, name: str, self, value):
-        serialized = cls._attributes[name].serialize(value)
-        self.instance[name] = serialized
+    def _set_property(cls, key: str, self, value):
+        serialized = cls._attributes[key].serialize(value)
+        self.instance[key] = serialized
 
     @classmethod
     def _del_property(cls, name: str, self):
@@ -587,13 +641,19 @@ class Resource(object):
     def save(self):
         if self.id is None:
             assert isinstance(self.create, ObjectLinkProxy), "Invalid proxy type %s" % type(self.create)
-            self._instance = self.create(self)
+            self._update(self.create(self))
         else:
             assert isinstance(self.update, ObjectLinkProxy), "Invalid proxy type %s" % type(self.create)
-            self._instance = self.update(self)
+            self._update(self.update(self))
+
+    def _update(self, raw_dict: dict):
+        for key, value in raw_dict.items():
+            if key in self._attributes and isinstance(self._attributes[key], AttributeMapped):
+                value = self._attributes[key].resolve(value, self.client)
+            self._instance[key] = value
 
     def refresh(self):
-        self._instance = self.self()
+        self._update(self.self())
 
     @property
     def id(self):
@@ -608,14 +668,13 @@ class Resource(object):
     def __str__(self):
         return "<%s %s: %s>" % (self.__class__, getattr(self, "id"), str(self._instance))
 
-    def __repr__(self):
-        return json.dumps(self.valid_instance)
-
     def __eq__(self, other):
         if self.uri and other.uri:
             return self.uri == other.uri
         else:
             super(Resource, self).__eq__(other)
+
+    to_json = valid_instance
 
     @classmethod
     def factory(cls, docstring, name, schema, requests_kwargs, client):
@@ -661,3 +720,4 @@ class Resource(object):
                                                           doc=attr.__doc__))
 
         return resource
+
