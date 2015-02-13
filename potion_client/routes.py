@@ -222,6 +222,11 @@ class CollectionLinkProxy(BoundedLinkProxy):
         except IndexError:
             raise IndexError(index)
 
+    def __repr__(self):
+        if self._collection is None:
+            self._collection = self._resolve()
+        return "Collection [\n" + ",".join([repr(self[i]) for i, v in enumerate(self._collection)]) + "\n...]"
+
 
 class ListLinkIterator(object):
 
@@ -582,7 +587,7 @@ class AttributeMappedDict(object):
         return self._raw
 
     def __repr__(self):
-        return "[AttributeMappedDict %s]" % self._raw
+        return "AttributeMappedDict(%s)" % self._raw
 
 
 class Resource(object):
@@ -689,8 +694,10 @@ class Resource(object):
     def __dir__(self):
         return super(Resource, self).__dir__() + list(self._schema[PROPERTIES].keys())
 
-    def __str__(self):
-        return "<%s %s: %s>" % (self.__class__, getattr(self, "id"), str(self._instance))
+    def __repr__(self):
+        self._ensure_instance()
+        return "%s id=%s, " % (self.__class__.__name__, self.id) + \
+            ", ".join(["%s = %s" % (k, getattr(self, k)) for k in self._instance])
 
     def __eq__(self, other):
         if self.uri and other.uri:
