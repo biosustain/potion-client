@@ -45,5 +45,6 @@ FORMAT = "format"
 READ_ONLY = "readOnly"
 ONE_OF = "oneOf"
 ANY_OF = "anyOf"
+DEFAULT = "default"
 
 ALL_TYPES = ["null", "string", "number", "boolean", "object", "array"]

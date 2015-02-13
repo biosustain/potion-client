@@ -17,7 +17,7 @@ from potion_client import data_types
 from potion_client.exceptions import OneOfException
 from potion_client.constants import *
 
-from json import dumps
+from json import dumps, loads
 from functools import partial
 from urllib.parse import urlparse
 
@@ -27,7 +27,7 @@ import logging
 
 
 logger = logging.getLogger(__name__)
-logger.level = logging.DEBUG
+logger.setLevel(logging.DEBUG)
 
 
 _string_formatter = string.Formatter()
@@ -52,7 +52,9 @@ class DynamicElement(object):
 
 
 class LinkProxy(DynamicElement):
-
+    """
+    A representation of a Link. It is used to manipulate the link context: binding and kwargs.
+    """
     def __init__(self, link=None, binding=None, attributes=None, **kwargs):
         super(LinkProxy, self).__init__(link)
         self._kwargs = kwargs
@@ -73,7 +75,7 @@ class LinkProxy(DynamicElement):
     @property
     def return_type(self):
         if self._link.return_type is list:
-            return ListLinkProxy
+            return CollectionLinkProxy
         elif self._link.return_type is type(None):
             return VoidLinkProxy
 
@@ -90,7 +92,7 @@ class LinkProxy(DynamicElement):
             properties = self._link.schema[PROPERTIES]
             for prop in properties.keys():
                 self._attributes[prop] = Attribute(properties[prop])
-                setattr(self, prop, self._proxy(prop))
+                setattr(self, utils.to_snake_case(prop), self._proxy(prop))
 
     def _parse_kwarg(self, key, value):
         if key in self._attributes:
@@ -125,8 +127,12 @@ class LinkProxy(DynamicElement):
 
 
 class BoundedLinkProxy(LinkProxy):
-
+    """
+    A representation of a Link. It is used to manipulate the link context: binding and kwargs.
+    The bounded link proxy requires a binding other then None.
+    """
     def __init__(self, **kwargs):
+        assert kwargs.get("binding", None) is not None
         super(BoundedLinkProxy, self).__init__(**kwargs)
         self._parse_schema()
 
@@ -135,14 +141,20 @@ class BoundedLinkProxy(LinkProxy):
 
 
 class VoidLinkProxy(BoundedLinkProxy):
-
+    """
+    A representation of a Link. It requires a binding other then none. When resolved, it return always None.
+    """
     def handler(self, res: requests.Response):
         return None
 
 
-class ListLinkProxy(BoundedLinkProxy):
+class CollectionLinkProxy(BoundedLinkProxy):
+    """
+    A representation of a Link. It requires a binding other then none.
+    When resolved returns a collection. The collection as automatic pagination when supported.
+    """
     def __init__(self, links=None, **kwargs):
-        super(ListLinkProxy, self).__init__(**kwargs)
+        super(CollectionLinkProxy, self).__init__(**kwargs)
         self._collection = None
         self._total = 0
         self._links = links or {}
@@ -164,7 +176,7 @@ class ListLinkProxy(BoundedLinkProxy):
 
             for key, value in utils.params_to_dictionary(url.query).items():
                 new_kwargs[key] = self.serialize_attribute_value(key, value)
-            link = ListLinkProxy(link=self._link, binding=self._binding, **new_kwargs)
+            link = CollectionLinkProxy(link=self._link, binding=self._binding, **new_kwargs)
         setattr(self, name, link)
         self._links[name] = link
 
@@ -192,15 +204,28 @@ class ListLinkProxy(BoundedLinkProxy):
             page = index/per_page
             kwargs = self._kwargs
             kwargs['page'] = page
-            link = ListLinkProxy(link=self._link, binding=self._binding, **kwargs)
+            link = CollectionLinkProxy(link=self._link, binding=self._binding, **kwargs)
             return link[index-page*per_page]
+        try:
+            item = self._collection[index]
+            if isinstance(item, dict):
+                if URI in item:
+                    return utils.evaluate_ref(self._collection[index][URI],
+                                              self._binding.client,
+                                              self._collection[index])
+                elif REF in item:
+                    return utils.evaluate_ref(self._collection[index][REF],
+                                              self._binding.client)
 
-        return utils.evaluate_ref(self._collection[index][URI], self._binding.client, self._collection[index])
+            return item
+
+        except IndexError:
+            raise IndexError(index)
 
 
 class ListLinkIterator(object):
 
-    def __init__(self, list_link: ListLinkProxy):
+    def __init__(self, list_link: CollectionLinkProxy):
         if hasattr(list_link, 'first'):
             self._slice_link = list_link.first
         else:
@@ -223,6 +248,9 @@ class ListLinkIterator(object):
 
 
 class ObjectLinkProxy(BoundedLinkProxy):
+    """
+    A representation of a Link. It requires a binding other then none. When resolved, it returns an object as response.
+    """
 
     def __init__(self, **kwargs):
         binding = kwargs["binding"]
@@ -272,14 +300,14 @@ class Link(object):
             return type(None)
 
     @property
-    def input_type(self) -> type:
+    def input_types(self) -> type:
         if TYPE in self.schema:
-            return utils.type_for(self.schema[TYPE])[0]
+            return utils.type_for(self.schema[TYPE])
         elif REF in self.schema:
             if self.schema[REF] == "#":
-                return object
+                return [object]
         else:
-            return type(None)
+            return [type(None)]
 
     def __call__(self, *args, binding=None, handler=None, **kwargs):
         if REF in self.schema and self.schema[REF] == "#":
@@ -288,9 +316,11 @@ class Link(object):
             self.target_schema = binding._schema
         url = self.generate_url(binding, self.route)
         params = utils.dictionary_to_params(kwargs)
+        logger.debug("PARAMS: %s" % params)
         args = self._process_args(args)
-        data = dumps(args, cls=utils.JSONEncoder)
-        res = requests.request(self.method, url=url, data=data, params=params, **self.request_kwargs)
+        data = loads(dumps(args, cls=utils.JSONEncoder))
+        logger.debug("DATA: %s" % data)
+        res = requests.request(self.method, url=url, json=data, params=params, **self.request_kwargs)
         utils.validate_response_status(res)
         return handler(res)
 
@@ -301,22 +331,17 @@ class Link(object):
             url = url.format(**{k: getattr(binding, str(k)) for k in self.route.keys})
         if url.endswith("/"):
             return url[0:-1]
-        logger.debug("Generated url: %s" % url)
+        logger.debug("URL: %s" % url)
         return url
 
     def _process_args(self, args):
-        self._serializer = self._serializer or Attribute(self.schema or {})
-        if self.input_type is list:
-            return self._serializer.serialize(args)
-        else:
+        if list not in self.input_types:
             if len(args) > 0:
-                obj = args[0]
-                if isinstance(obj, Resource):
-                    return obj.valid_instance
-                else:
-                    return self._serializer.serialize(args[0])
-            else:
+                return args[0]
+            elif len(args) == 0:
                 return None
+        else:
+            return list(args)
 
     def __repr__(self):
         return "[Link %s '%s']" % (self.method, self.route.path)
@@ -414,7 +439,7 @@ class Attribute(object):
         elif dict in self.types:
             return {}
         else:
-            return None
+            return self.definition.get(DEFAULT, None)
 
 
 class OneOf(Attribute):
@@ -613,7 +638,6 @@ class Resource(object):
         if raw is None:
             raw = attr.empty_value
             self._instance[name] = raw
-            print("Setting", name, "=", raw)
         return attr.resolve(raw, self.client)
 
     @classmethod
@@ -678,7 +702,7 @@ class Resource(object):
 
     @classmethod
     def factory(cls, docstring, name, schema, requests_kwargs, client):
-        class_name = utils.camelize(name)
+        class_name = utils.to_camel_case(name)
 
         resource = type(class_name, (cls, ), {})
         resource.__doc__ = docstring
@@ -700,10 +724,11 @@ class Resource(object):
                         target_schema=link_desc.get(TARGET_SCHEMA, {}), requests_kwargs=requests_kwargs,
                         docstring=link_desc.get(DOC, None))
 
+            rel = utils.to_snake_case(link_desc[REL])
             if route.is_instance:
-                resource._instance_links[link_desc[REL]] = link
+                resource._instance_links[rel] = link
             else:
-                setattr(resource, link_desc[REL], LinkProxy(link))
+                setattr(resource, rel, LinkProxy(link))
 
         for name, prop in schema[PROPERTIES].items():
             attr = Attribute(prop)

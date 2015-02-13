@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import re
 import string
 from jsonschema import validate
 from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
@@ -45,9 +46,12 @@ def validate_response_status(response):
         raise HTTP_EXCEPTIONS.get(code, default_error)(HTTP_MESSAGES.get(code, default_message), response.text)
 
 
-def camelize(a_string):
-    assert isinstance(a_string, str)
+def to_camel_case(a_string: str):
     return "".join([part.capitalize() for part in a_string.replace("-", "_").split("_")])
+
+
+def to_snake_case(a_string: str):
+    return a_string[0].lower() + re.sub('([A-Z])', r'_\1', a_string[1:]).lower()
 
 
 def params_to_dictionary(params_string):
@@ -115,4 +119,4 @@ class JSONEncoder(json.JSONEncoder):
         if hasattr(obj, "to_json"):
             return obj.to_json
         else:
-            return super(JSONEncoder, self).default(obj)
+            return json.JSONEncoder.default(self, obj)

@@ -173,7 +173,6 @@ class InstancesTestCase(MockAPITestCase):
 
     def test_any_field(self):
         with HTTMock(self.post_mock, self.get_mock, self.patch_mock):
-            pprint(self.potion_client.Baz._schema['properties'])
             foo = self._create_foo()
             baz = self._create_baz(attr1=2, foo=foo)
             self.assertEqual(baz.attr2, None)
@@ -196,8 +195,8 @@ class InstancesTestCase(MockAPITestCase):
     def test_item_attribute(self):
         with HTTMock(self.post_mock, self.get_mock, self.patch_mock):
             foo = self._create_foo()
-            foo.updateAttr3("value3")
-            self.assertEqual(foo.readAttr3(), "value3")
+            foo.update_attr3("value3")
+            self.assertEqual(foo.read_attr3(), "value3")
 
     def test_empty_instances(self):
         with HTTMock(self.get_mock):

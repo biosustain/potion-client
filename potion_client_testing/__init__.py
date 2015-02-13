@@ -26,7 +26,6 @@ from flask_potion.routes import ItemAttributeRoute
 
 from flask_sqlalchemy import SQLAlchemy
 
-from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import backref
 from sqlalchemy.orm.collections import attribute_mapped_collection
@@ -35,6 +34,10 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 from httmock import urlmatch
 
 from potion_client import utils
+
+import logging
+
+logging.basicConfig(level=10)
 
 
 class JSONType(sqla.TypeDecorator):
@@ -76,14 +79,12 @@ class MockResponseTool(object):
     def post_mock(self, url, request):
         path = utils.path_for_url(url)
         body = json.loads(request.body)
-        print(body)
         return self.reply(self.client.post(path, data=body))
 
     @urlmatch(netloc='.*', method="PATCH", path=".*")
     def patch_mock(self, url, request):
         path = utils.path_for_url(url)
         body = json.loads(request.body)
-        print(body)
         return self.reply(self.client.patch(path, data=body))
 
     @urlmatch(netloc='.*', method="DELETE", path=".*")

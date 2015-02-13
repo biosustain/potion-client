@@ -18,12 +18,14 @@ from potion_client import utils
 class UtilsTestCase(TestCase):
 
     def test_camelize(self):
-        self.assertEqual("SnakeCase", utils.camelize("snake_case"))
-        self.assertEqual("DNA", utils.camelize("D_N_A"))
-        self.assertEqual("Dna", utils.camelize("DNA"))
+        self.assertEqual("CamelCase", utils.to_camel_case("camel_case"))
+        self.assertEqual("DNA", utils.to_camel_case("d_n_a"))
+        self.assertEqual("Dna", utils.to_camel_case("DNA"))
 
     def test_snake_case(self):
-        pass
+        self.assertEqual("snake_case", utils.to_snake_case("SnakeCase"))
+        self.assertEqual("d_n_a", utils.to_snake_case("DNA"))
+        self.assertEqual("dna", utils.to_snake_case("Dna"))
 
     def test_types(self):
         self.assertEqual(utils.type_for("object"), [dict])
