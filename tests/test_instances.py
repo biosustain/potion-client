@@ -45,7 +45,7 @@ class InstancesTestCase(MockAPITestCase):
         return bar
 
     def _create_baz(self, attr1=1.0, attr2=None, foo=None):
-        baz = self.potion_client.Baz(attr1=attr1, foo=foo, attr2=None)
+        baz = self.potion_client.Baz(attr1=attr1, foo=foo, attr2=attr2)
         baz.save()
         return baz
 
