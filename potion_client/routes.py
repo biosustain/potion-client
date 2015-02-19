@@ -383,11 +383,9 @@ class Attribute(object):
         elif TYPE in self.definition and utils.same_values_in(self.definition[TYPE], ALL_TYPES):
             self.__class__ = AnyObject
             self._parse_definition()
-
         elif isinstance(self.additional_properties, dict):
-            if self.additional_properties[TYPE] == "object":
-                self.__class__ = AttributeMapped
-                self._parse_definition()
+            self.__class__ = AttributeMapped
+            self._parse_definition()
 
 
     @property
@@ -526,7 +524,7 @@ class AttributeMapped(Attribute):
                 ret = self.empty_value
                 for key in obj.keys():
                     ret[key] = self._value_attribute.resolve(obj[key], client)
-            elif isinstance(obj, AttributeMappedDict):
+            elif isinstance(obj, MappedAttributeDict):
                 ret = obj
         else:
             ret = self.empty_value
@@ -534,7 +532,7 @@ class AttributeMapped(Attribute):
 
     @property
     def empty_value(self):
-        return AttributeMappedDict(self._value_attribute)
+        return MappedAttributeDict(self._value_attribute)
 
 
 class Items(Attribute):
@@ -562,7 +560,7 @@ class Items(Attribute):
         return[super(Items, self).resolve(element, client) for element in iterable]
 
 
-class AttributeMappedDict(object):
+class MappedAttributeDict(object):
     def __init__(self, attribute):
         assert isinstance(attribute, Attribute)
         self._raw = dict()
@@ -589,6 +587,14 @@ class AttributeMappedDict(object):
     def __repr__(self):
         return "AttributeMappedDict(%s)" % self._raw
 
+    def __eq__(self, other):
+        if isinstance(other, MappedAttributeDict):
+            return self._raw == other._raw and self._resolved == other._resolved
+        elif isinstance(other, dict):
+            return self._resolved == other
+        else:
+            return False
+
 
 class Resource(object):
     client = None
@@ -601,7 +607,7 @@ class Resource(object):
         self._create_proxies()
         self._id = oid
         self._instance = instance
-        if oid is None:  # make a new object
+        if oid is None and instance is None:  # make a new object
             self._instance = {}
 
         for key, value in kwargs.items():
