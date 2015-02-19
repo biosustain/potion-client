@@ -13,10 +13,9 @@
 # limitations under the License.
 
 from datetime import datetime, timezone
-from pprint import pprint
 from httmock import HTTMock
 from potion_client import Client
-from potion_client.routes import AttributeMappedDict
+from potion_client.routes import MappedAttributeDict
 from potion_client_testing import MockAPITestCase
 
 
@@ -205,7 +204,7 @@ class InstancesTestCase(MockAPITestCase):
     def test_mapped_attribute(self):
         with HTTMock(self.get_mock, self.post_mock, self.patch_mock):
             foo = self._create_foo_with_mapped_biz()
-            self.assertIsInstance(foo.bizes, AttributeMappedDict)
+            self.assertIsInstance(foo.bizes, MappedAttributeDict)
             biz = self._create_biz()
             foo.bizes["bizzy1"] = biz
             foo.save()
