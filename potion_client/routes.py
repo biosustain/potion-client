@@ -222,6 +222,12 @@ class CollectionLinkProxy(BoundedLinkProxy):
         except IndexError:
             raise IndexError(index)
 
+    def __call__(self, *args, **kwargs):
+        new_kwargs = {}
+        new_kwargs.update(self._kwargs)
+        new_kwargs.update(kwargs)
+        return CollectionLinkProxy(link=self._link, binding=self._binding, **new_kwargs)
+
     def __repr__(self):
         if self._collection is None:
             self._collection = self._resolve()
@@ -387,7 +393,6 @@ class Attribute(object):
             self.__class__ = AttributeMapped
             self._parse_definition()
 
-
     @property
     def required(self):
         return type(None) in self.types
@@ -519,15 +524,13 @@ class AttributeMapped(Attribute):
         return ret
 
     def resolve(self, obj, client):
+        ret = self.empty_value
         if obj is not None:
             if isinstance(obj, dict):
-                ret = self.empty_value
                 for key in obj.keys():
                     ret[key] = self._value_attribute.resolve(obj[key], client)
             elif isinstance(obj, MappedAttributeDict):
                 ret = obj
-        else:
-            ret = self.empty_value
         return ret
 
     @property
@@ -723,7 +726,6 @@ class Resource(object):
         resource.client = client
         resource._instance_links = {}
         resource._attributes = {}
-
         routes = {}
 
         for link_desc in schema[LINKS]:
@@ -758,4 +760,3 @@ class Resource(object):
                                                           doc=attr.__doc__))
 
         return resource
-
