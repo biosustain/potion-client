@@ -30,4 +30,4 @@ A client for REST APIs documented using JSON-schema in general, and `Flask-Potio
 ## Dependencies
 
 - [requests](http://docs.python-requests.org/en/latest/) for HTTP requests
-- [jsonschema](python-jsonschema.readthedocs.org/en/latest/)
+- [jsonschema](http://python-jsonschema.readthedocs.org/en/latest/)
