@@ -21,6 +21,7 @@ from json import dumps, loads
 from functools import partial
 from urllib.parse import urlparse
 
+import six
 import string
 import requests
 import logging
@@ -32,11 +33,13 @@ logger.setLevel(logging.DEBUG)
 
 _string_formatter = string.Formatter()
 
+NoneType = type(None)
+
 
 class DynamicElement(object):
 
     def __init__(self, link):
-        assert isinstance(link, (Link, type(None))), "Invalid link type (%s) for proxy" % type(link)
+        assert isinstance(link, (Link, NoneType)), "Invalid link type (%s) for proxy" % type(link)
         self._link = link
 
     @property
@@ -76,7 +79,7 @@ class LinkProxy(DynamicElement):
     def return_type(self):
         if self._link.return_type is list:
             return CollectionLinkProxy
-        elif self._link.return_type is type(None):
+        elif self._link.return_type is NoneType:
             return VoidLinkProxy
 
         return ObjectLinkProxy
@@ -147,12 +150,17 @@ class VoidLinkProxy(BoundedLinkProxy):
     def handler(self, res: requests.Response):
         return None
 
+    @property
+    def return_type(self):
+        return NoneType
+
 
 class CollectionLinkProxy(BoundedLinkProxy):
     """
     A representation of a Link. It requires a binding other then none.
     When resolved returns a collection. The collection as automatic pagination when supported.
     """
+
     def __init__(self, links=None, **kwargs):
         super(CollectionLinkProxy, self).__init__(**kwargs)
         self._collection = None
@@ -233,6 +241,20 @@ class CollectionLinkProxy(BoundedLinkProxy):
             self._collection = self._resolve()
         return "Collection [\n" + ",".join([repr(self[i]) for i, v in enumerate(self._collection)]) + "\n...]"
 
+    def __eq__(self, other):
+        equal = True
+        if isinstance(other, list):
+            for i, v in enumerate(other):
+                equal = equal and self[i] == v
+
+        elif isinstance(other, CollectionLinkProxy):
+            equal = all([k in other._kwargs for k in self._kwargs]) and (k in self._kwargs for k in other._kwargs)
+            if equal:
+                for k, v in six.iteritems(self._kwargs):
+                    equal = equal and v == other._kwargs[k]
+
+        return equal
+
 
 class ListLinkIterator(object):
 
@@ -308,7 +330,7 @@ class Link(object):
             if self.target_schema[REF] == "#":
                 return object
         else:
-            return type(None)
+            return NoneType
 
     @property
     def input_types(self) -> type:
@@ -318,7 +340,7 @@ class Link(object):
             if self.schema[REF] == "#":
                 return [object]
         else:
-            return [type(None)]
+            return [NoneType]
 
     def __call__(self, *args, binding=None, handler=None, **kwargs):
         if REF in self.schema and self.schema[REF] == "#":
@@ -395,7 +417,7 @@ class Attribute(object):
 
     @property
     def required(self):
-        return type(None) in self.types
+        return NoneType in self.types
 
     @property
     def types(self):
@@ -442,7 +464,7 @@ class Attribute(object):
 
     @property
     def empty_value(self):
-        if self.read_only or type(None) in self.types:
+        if self.read_only or NoneType in self.types:
             return None
         elif dict in self.types:
             return {}
@@ -551,7 +573,7 @@ class Items(Attribute):
 
     @property
     def empty_value(self):
-        if type(None) in self.types:
+        if NoneType in self.types:
             return None
         else:
             return []
