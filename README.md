@@ -3,7 +3,7 @@
 
 # Potion client
 
-A client for REST APIs documented using JSON-schema in general, and `Flask-Presst` as well as the upcoming `Flask-Potion` in particular.
+A client for REST APIs documented using JSON-schema in general, and `Flask-Potion` in particular.
 
 ## Example
 
@@ -30,4 +30,4 @@ A client for REST APIs documented using JSON-schema in general, and `Flask-Press
 ## Dependencies
 
 - [requests](http://docs.python-requests.org/en/latest/) for HTTP requests
-- [jsonschema](python-jsonschema.readthedocs.org/en/latest/)
+- [jsonschema](http://python-jsonschema.readthedocs.org/en/latest/)
