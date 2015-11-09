@@ -25,7 +25,7 @@ setup(
     packages=find_packages(exclude=['*test*']),
     install_requires=requirements,
     setup_requires=["nose>=1.3"],
-    tests_require=["Flask-Testing>=0.4", "flask-potion>=0.2", "httmock>=1.2"],
+    tests_require=["Flask-Testing>=0.4", "Flask-Potion>=0.2", "Flask-SQLAlchemy>=2.0", "httmock>=1.2"],
     author='João Cardoso and Lars Schöning',
     author_email='joaca@biosustain.dtu.dk',
     description='',
