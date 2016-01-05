@@ -46,7 +46,7 @@ class DynamicElement(object):
     def return_type(self):
         raise NotImplementedError
 
-    def _resolve(self):
+    def _resolve(self, *args, **kwargs):
         pass
 
     @property
@@ -58,15 +58,16 @@ class LinkProxy(DynamicElement):
     """
     A representation of a Link. It is used to manipulate the link context: binding and kwargs.
     """
-    def __init__(self, link=None, binding=None, attributes=None, **kwargs):
+    def __init__(self, link=None, binding=None, attributes=None, required=None, **kwargs):
         super(LinkProxy, self).__init__(link)
         self._kwargs = kwargs
         self._binding = binding
         self._attributes = attributes or {}
+        self._required = required or []
 
     def serialize_attribute_value(self, key, value):
         if key in self._attributes:
-            return self._attributes[key].serialize(value)
+            return self._attributes[key].serialize(value, required=key in self._required)
         return value
 
     def handler(self, res: requests.Response):
@@ -96,10 +97,11 @@ class LinkProxy(DynamicElement):
             for prop in properties.keys():
                 self._attributes[prop] = Attribute(properties[prop])
                 setattr(self, utils.to_snake_case(prop), self._proxy(prop))
+        self._required = self._link.schema.get(REQUIRED, [])
 
     def _parse_kwarg(self, key, value):
         if key in self._attributes:
-            self._kwargs[key] = self._attributes[key].serialize(value)
+            self._kwargs[key] = self._attributes[key].serialize(value, required=key in self._required)
 
     def _proxy(self, prop):
 
@@ -115,7 +117,7 @@ class LinkProxy(DynamicElement):
                 val = kwargs
             attr = self._attributes.get(prop, None)
             if attr is not None:
-                val = attr.serialize(val)
+                val = attr.serialize(val, required=prop in self._required)
             new_kwargs[prop] = val
 
             proxy = self.return_type(link=self._link, binding=self._binding, attributes=self._attributes, **new_kwargs)
@@ -239,7 +241,10 @@ class CollectionLinkProxy(BoundedLinkProxy):
     def __repr__(self):
         if self._collection is None:
             self._collection = self._resolve()
-        return "Collection [\n" + ",".join([repr(self[i]) for i, v in enumerate(self._collection)]) + "\n...]"
+        if len(self) > 0:
+            return "Collection [\n" + "\n,".join([repr(self[i]) for i, v in enumerate(self._collection)]) + "\n]"
+        else:
+            return "Collection [<Empty>]"
 
     def __eq__(self, other):
         equal = True
@@ -348,6 +353,8 @@ class Link(object):
         if REF in self.target_schema and self.target_schema[REF] == "#":
             self.target_schema = binding._schema
         url = self.generate_url(binding, self.route)
+        logger.debug("METHOD: %s" % self.method)
+        logger.debug("URL: %s" % url)
         params = utils.dictionary_to_params(kwargs)
         logger.debug("PARAMS: %s" % params)
         args = self._process_args(args)
@@ -364,7 +371,6 @@ class Link(object):
             url = url.format(**{k: getattr(binding, str(k)) for k in self.route.keys})
         if url.endswith("/"):
             return url[0:-1]
-        logger.debug("URL: %s" % url)
         return url
 
     def _process_args(self, args):
@@ -389,11 +395,14 @@ class Attribute(object):
         self.definition = definition
 
         self._attributes = {}
+        self._required = definition.get(REQUIRED, [])
         self._parse_definition()
 
     def _parse_definition(self):
         if PROPERTIES in self.definition:
             for name, prop in self.definition[PROPERTIES].items():
+                if name in [REF, URI]:
+                    self._required.append(name)
                 self._attributes[name] = Attribute(prop)
 
         elif ITEMS in self.definition:
@@ -416,16 +425,20 @@ class Attribute(object):
             self._parse_definition()
 
     @property
-    def required(self):
-        return NoneType in self.types
-
-    @property
     def types(self):
         return utils.type_for(self.definition.get(TYPE, "object"))
 
-    def serialize(self, obj, valid=True):
+    def valid_type(self, obj):
+        if isinstance(obj, Resource) and dict in self.types:
+            return True
+        elif isinstance(obj, tuple(self.types)):
+            return True
+        else:
+            return False
+
+    def serialize(self, obj, valid=True, required=False):
         if obj is None:
-            value = self.empty_value
+            value = self.empty_value if required else None
         elif dict in self.types:
             value = {}
             if self.additional_properties:
@@ -441,14 +454,15 @@ class Attribute(object):
                 else:
                     val = obj.get(key, None)
                     if key in self._attributes:
-                        val = self._attributes[key].serialize(val)
+                        val = self._attributes[key].serialize(val, required=key in self._required)
 
                 if val is not None:
                     value[key] = val
 
         else:
             value = self.types[0](obj)
-        if valid:
+
+        if value is not None and not required and valid:
             utils.validate(value, self.definition)
         return value
 
@@ -471,49 +485,77 @@ class Attribute(object):
         else:
             return self.definition.get(DEFAULT, None)
 
+    def __repr__(self):
+        return "Attribute\n" +\
+               "\t%s\n" % self.types + \
+               "\t" + "\n\t".join(["%s=%s" % (key, str(attr.__class__) + "[R]" if key in self._required else "")
+                                   for key, attr in six.iteritems(self._attributes)])
 
-class OneOf(Attribute):
+
+class AnyOf(Attribute):
     def __init__(self, definitions):
         self.definition = definitions
-        super(OneOf, self).__init__({})
+        super(AnyOf, self).__init__({})
 
     def _parse_definition(self):
-        for index, definition in enumerate(self.definition):
-            self._attributes[index] = Attribute(definition)
+        self._attributes = [Attribute(definition) for definition in self.definition]
 
     def resolve(self, obj, client):
         errors = []
-        for attr in self._attributes.values():
+        for attr in self._attributes:
             try:
                 return attr.resolve(obj, client)
             except Exception as e:
                 errors.append(e)
 
-        raise OneOfException(errors)
+    def serialize(self, obj, valid=True, required=True):
+        if obj is None:
+            return None
 
-    def serialize(self, obj, valid=True):
+        errors = []
+        for attr in self._attributes:
+            try:
+                if attr.valid_type(obj):
+                    return attr.serialize(obj, valid, required)
+                else:
+                    raise AssertionError("Invalid type %s for %s" % (type(obj), self.types))
+            except Exception as e:
+                errors.append(e)
+
+        return None
+
+    @property
+    def types(self):
+        seen = set()
+        all_types = [t for attr in self._attributes for t in attr.types]
+        return [x for x in all_types if x not in seen and not seen.add(x)]
+
+    def __repr__(self):
+        return "AnyOf\n" + \
+               "\t" + "\n\t".join(["%s %s" % (str(attr.__class__.__name__), attr.types) for attr in self._attributes])
+
+
+class OneOf(AnyOf):
+    def serialize(self, obj, valid=True, required=False):
         if obj is None:
             return None
 
         errors = []
 
-        for attr in self._attributes.values():
+        for attr in self._attributes:
             try:
-                return attr.serialize(obj, valid)
+                if attr.valid_type(obj):
+                    return attr.serialize(obj, valid, required)
+                else:
+                    raise AssertionError("Invalid type %s for %s" % (type(obj), self.types))
             except Exception as e:
                 errors.append(e)
-        if self.required:
+        if required:
             raise OneOfException(errors)
 
-    @property
-    def types(self):
-        seen = set()
-        all_types = [t for attr in self._attributes.values() for t in attr.types]
-        return [x for x in all_types if x not in seen and not seen.add(x)]
-
-
-class AnyOf(OneOf):
-    pass
+    def __repr__(self):
+        return "OneOf\n" + \
+               "\t" + "\n\t".join(["%s %s" % (str(attr.__class__.__name__), attr.types) for attr in self._attributes])
 
 
 class AnyObject(Attribute):
@@ -521,7 +563,7 @@ class AnyObject(Attribute):
     def _parse_definition(self):
         pass
 
-    def serialize(self, obj, valid=True):
+    def serialize(self, obj, valid=True, required=False):
         utils.validate_schema(self.definition, obj)
 
         return obj
@@ -535,7 +577,7 @@ class AttributeMapped(Attribute):
     def _parse_definition(self):
             self._value_attribute = Attribute(self.additional_properties)
 
-    def serialize(self, obj, valid=True):
+    def serialize(self, obj, valid=True, required=False):
         if obj is None:
             ret = self.empty_value
         else:
@@ -564,12 +606,12 @@ class Items(Attribute):
     def __init__(self, *args, **kwargs):
         super(Items, self).__init__(*args, **kwargs)
 
-    def serialize(self, iterable, valid=True):
-        if iterable is None and self.required:
+    def serialize(self, iterable, valid=True, required=False):
+        if iterable is None and required:
             return []
 
         assert isinstance(iterable, list), "Items expects list"
-        return[super(Items, self).serialize(element, self.definition) for element in iterable]
+        return[super(Items, self).serialize(element, self.definition, required) for element in iterable]
 
     @property
     def empty_value(self):
@@ -627,6 +669,7 @@ class Resource(object):
     _instance_links = None
     _self_route = None
     _attributes = None
+    _required = None
 
     def __init__(self, oid=None, instance=None, **kwargs):
         self._create_proxies()
@@ -678,7 +721,7 @@ class Resource(object):
 
     @classmethod
     def _set_property(cls, key: str, self, value):
-        serialized = cls._attributes[key].serialize(value)
+        serialized = cls._attributes[key].serialize(value, required=key in self._required)
         self.instance[key] = serialized
 
     @classmethod
@@ -703,7 +746,7 @@ class Resource(object):
             assert isinstance(self.create, ObjectLinkProxy), "Invalid proxy type %s" % type(self.create)
             self._update(self.create(self))
         else:
-            assert isinstance(self.update, ObjectLinkProxy), "Invalid proxy type %s" % type(self.create)
+            assert isinstance(self.update, ObjectLinkProxy), "Invalid proxy type %s" % type(self.update)
             self._update(self.update(self))
 
     def _update(self, raw_dict: dict):
@@ -727,8 +770,8 @@ class Resource(object):
 
     def __repr__(self):
         self._ensure_instance()
-        return "%s id=%s, " % (self.__class__.__name__, self.id) + \
-            ", ".join(["%s = %s" % (k, getattr(self, k)) for k in self._instance])
+        return "%s<id=%s\n\t" % (self.__class__.__name__, self.id) + \
+            "\n\t".join(["%s=%s" % (k, getattr(self, k)) for k in self._instance]) + ">"
 
     def __eq__(self, other):
         if self.uri and other.uri:
@@ -748,6 +791,7 @@ class Resource(object):
         resource.client = client
         resource._instance_links = {}
         resource._attributes = {}
+        resource._required = []
         routes = {}
 
         for link_desc in schema[LINKS]:
@@ -780,5 +824,6 @@ class Resource(object):
                                                           fset=partial(resource._set_property, name),
                                                           fdel=partial(resource._del_property, name),
                                                           doc=attr.__doc__))
+        resource._required = schema.get(REQUIRED, [])
 
         return resource
