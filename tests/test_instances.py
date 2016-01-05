@@ -13,9 +13,7 @@
 # limitations under the License.
 
 from datetime import datetime
-
 from httmock import HTTMock
-
 from potion_client import Client
 from potion_client import utils
 from potion_client.routes import MappedAttributeDict
@@ -23,7 +21,6 @@ from tests.potion_client_testing import MockAPITestCase
 
 
 class InstancesTestCase(MockAPITestCase):
-
     def _create_foo(self, attr1="value1", attr2="value2"):
         foo = self.potion_client.Foo()
         foo.attr1 = attr1
@@ -189,7 +186,7 @@ class InstancesTestCase(MockAPITestCase):
             self.assertEqual(baz.attr2, None)
             baz.attr2 = ["a", 2, 2.1, {"a": 2}]
             baz.save()
-            self.assertEqual(baz.attr2,  ["a", 2, 2.1, {"a": 2}])
+            self.assertEqual(baz.attr2, ["a", 2, 2.1, {"a": 2}])
             baz.attr2 = {"a": [123, 123, 456], "b": {}}
             baz.save()
             self.assertEqual(baz.attr2, {"a": [123, 123, 456], "b": {}})

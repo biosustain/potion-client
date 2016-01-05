@@ -14,27 +14,18 @@
 import json
 import requests
 import sqlalchemy as sqla
-
 from flask import Flask
-
 from flask.testing import FlaskClient
 from flask_testing import TestCase
-
 from flask_potion import fields, Api
 from flask_potion.resource import ModelResource
 from flask_potion.routes import ItemAttributeRoute
-
 from flask_sqlalchemy import SQLAlchemy
-
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import backref
 from sqlalchemy.orm.collections import attribute_mapped_collection
-
-
 from httmock import urlmatch
-
 from potion_client import utils
-
 import logging
 
 logging.basicConfig(level=10)
@@ -67,7 +58,6 @@ class ApiClient(FlaskClient):
 
 
 class MockResponseTool(object):
-
     encoding = "utf-8"
 
     @urlmatch(netloc='.*', method="GET", path=".*")
@@ -107,7 +97,6 @@ class MockResponseTool(object):
 
 
 class MockAPITestCase(MockResponseTool, TestCase):
-
     def create_app(self):
         app = Flask(__name__)
         app.config['SQLALCHEMY_ENGINE'] = 'sqlite://'
@@ -162,6 +151,7 @@ class MockAPITestCase(MockResponseTool, TestCase):
                                                   backref=backref('foo_has_bizes',
                                                                   collection_class=attribute_mapped_collection('key'),
                                                                   cascade='all, delete-orphan'))
+
         sa.create_all()
 
         class ResourceFoo(ModelResource):

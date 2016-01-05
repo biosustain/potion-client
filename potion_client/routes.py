@@ -16,20 +16,16 @@ from . import utils
 from . import data_types
 from .exceptions import OneOfException
 from .constants import *
-
 from json import dumps, loads
 from functools import partial
 from six.moves.urllib.parse import urlparse
-
 import six
 import string
 import requests
 import logging
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
 
 _string_formatter = string.Formatter()
 
@@ -37,7 +33,6 @@ NoneType = type(None)
 
 
 class DynamicElement(object):
-
     def __init__(self, link):
         assert isinstance(link, (Link, NoneType)), "Invalid link type (%s) for proxy" % type(link)
         self._link = link
@@ -58,6 +53,7 @@ class LinkProxy(DynamicElement):
     """
     A representation of a Link. It is used to manipulate the link context: binding and kwargs.
     """
+
     def __init__(self, link=None, binding=None, attributes=None, required=None, **kwargs):
         super(LinkProxy, self).__init__(link)
         self._kwargs = kwargs
@@ -136,6 +132,7 @@ class BoundedLinkProxy(LinkProxy):
     A representation of a Link. It is used to manipulate the link context: binding and kwargs.
     The bounded link proxy requires a binding other then None.
     """
+
     def __init__(self, **kwargs):
         assert kwargs.get("binding", None) is not None
         super(BoundedLinkProxy, self).__init__(**kwargs)
@@ -149,6 +146,7 @@ class VoidLinkProxy(BoundedLinkProxy):
     """
     A representation of a Link. It requires a binding other then none. When resolved, it return always None.
     """
+
     def handler(self, res):
         return None
 
@@ -211,11 +209,11 @@ class CollectionLinkProxy(BoundedLinkProxy):
 
         if index > self._total:
             per_page = self._kwargs['per_page']
-            page = index/per_page
+            page = index / per_page
             kwargs = self._kwargs
             kwargs['page'] = page
             link = CollectionLinkProxy(link=self._link, binding=self._binding, **kwargs)
-            return link[index-page*per_page]
+            return link[index - page * per_page]
         try:
             item = self._collection[index]
             if isinstance(item, dict):
@@ -262,7 +260,6 @@ class CollectionLinkProxy(BoundedLinkProxy):
 
 
 class ListLinkIterator(six.Iterator):
-
     def __init__(self, list_link):
         if hasattr(list_link, 'first'):
             self._slice_link = list_link.first
@@ -488,7 +485,7 @@ class Attribute(object):
             return self.definition.get(DEFAULT, None)
 
     def __repr__(self):
-        return "Attribute\n" +\
+        return "Attribute\n" + \
                "\t%s\n" % self.types + \
                "\t" + "\n\t".join(["%s=%s" % (key, str(attr.__class__) + "[R]" if key in self._required else "")
                                    for key, attr in six.iteritems(self._attributes)])
@@ -561,7 +558,6 @@ class OneOf(AnyOf):
 
 
 class AnyObject(Attribute):
-
     def _parse_definition(self):
         pass
 
@@ -575,9 +571,8 @@ class AnyObject(Attribute):
 
 
 class AttributeMapped(Attribute):
-
     def _parse_definition(self):
-            self._value_attribute = Attribute(self.additional_properties)
+        self._value_attribute = Attribute(self.additional_properties)
 
     def serialize(self, obj, valid=True, required=False):
         if obj is None:
@@ -613,7 +608,7 @@ class Items(Attribute):
             return []
 
         assert isinstance(iterable, list), "Items expects list"
-        return[super(Items, self).serialize(element, self.definition, required) for element in iterable]
+        return [super(Items, self).serialize(element, self.definition, required) for element in iterable]
 
     @property
     def empty_value(self):
@@ -626,7 +621,7 @@ class Items(Attribute):
         if list is None:
             return self.empty_value
 
-        return[super(Items, self).resolve(element, client) for element in iterable]
+        return [super(Items, self).resolve(element, client) for element in iterable]
 
 
 class MappedAttributeDict(object):
@@ -773,7 +768,7 @@ class Resource(object):
     def __repr__(self):
         self._ensure_instance()
         return "%s<id=%s\n\t" % (self.__class__.__name__, self.id) + \
-            "\n\t".join(["%s=%s" % (k, getattr(self, k)) for k in self._instance]) + ">"
+               "\n\t".join(["%s=%s" % (k, getattr(self, k)) for k in self._instance]) + ">"
 
     def __eq__(self, other):
         if self.uri and other.uri:
@@ -787,7 +782,7 @@ class Resource(object):
     def factory(cls, docstring, name, schema, requests_kwargs, client):
         class_name = utils.to_camel_case(name)
 
-        resource = type(str(class_name), (cls, ), {'__doc__': docstring})
+        resource = type(str(class_name), (cls,), {'__doc__': docstring})
         resource._schema = schema
         resource.client = client
         resource._instance_links = {}

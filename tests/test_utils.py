@@ -12,14 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from unittest import TestCase
-
 import six
-
 from potion_client import utils
 
 
 class UtilsTestCase(TestCase):
-
     def test_camelize(self):
         self.assertEqual("CamelCase", utils.to_camel_case("camel_case"))
         self.assertEqual("DNA", utils.to_camel_case("d_n_a"))

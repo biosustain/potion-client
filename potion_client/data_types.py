@@ -13,7 +13,6 @@
 # limitations under the License.
 import calendar
 from datetime import datetime
-
 from potion_client import utils
 
 _handlers = {}
@@ -42,6 +41,7 @@ class Reference(DataType):
     def resolve(cls, obj, client):
         return utils.evaluate_ref(obj["$ref"], client)
 
+
 _handlers["$ref"] = Reference
 
 
@@ -53,5 +53,6 @@ class Date(DataType):
     @classmethod
     def resolve(cls, obj, client):
         return datetime.fromtimestamp(obj["$date"] / 1000, utils.timezone.utc)
+
 
 _handlers["$date"] = Date

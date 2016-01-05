@@ -19,16 +19,15 @@ from . import utils
 
 
 class Client(object):
-
     def __init__(self, base_url="http://localhost", schema_path="/schema", **requests_kwargs):
         self._resources = {}
         self.base_url = base_url
         self._schema_cache = {}
 
-        response = requests.get(base_url+schema_path, **requests_kwargs)
+        response = requests.get(base_url + schema_path, **requests_kwargs)
         utils.validate_response_status(response)
         self._schema = response.json()
-        self._schema_cache[schema_path+"#"] = self._schema
+        self._schema_cache[schema_path + "#"] = self._schema
 
         for name, desc in self._schema[PROPERTIES].items():
             response = requests.get(self.base_url + desc[REF], **requests_kwargs)
@@ -56,7 +55,7 @@ class Client(object):
             else:
                 schema = self._schema
         else:
-            schema = self._schema_cache[document+"#"]
+            schema = self._schema_cache[document + "#"]
 
         null, key, fragment = path.split("/")
         if fragment in schema[key]:

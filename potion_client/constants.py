@@ -15,7 +15,6 @@
 SCHEMA_PATH = "/schema"
 DEFAULT_PER_PAGE = 20
 
-
 # HTTP constants
 GET = "GET"
 POST = "POST"

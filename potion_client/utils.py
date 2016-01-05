@@ -14,7 +14,6 @@
 import json
 import re
 import string
-
 import six
 from jsonschema import validate
 from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
@@ -116,17 +115,18 @@ def same_values_in(collection_a, collection_b):
 
 
 class JSONEncoder(json.JSONEncoder):
-
     def default(self, obj):
         if hasattr(obj, "to_json"):
             return obj.to_json
         else:
             return json.JSONEncoder.default(self, obj)
 
+
 try:
     from datetime import timezone
 except ImportError:
     from datetime import tzinfo, timedelta
+
 
     class timezone(tzinfo):
         def __init__(self, utcoffset, name=None):
@@ -141,5 +141,6 @@ except ImportError:
 
         def dst(self, dt):
             return timedelta(0)
+
 
     timezone.utc = timezone(timedelta(0), 'UTC')
