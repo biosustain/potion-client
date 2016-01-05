@@ -46,5 +46,6 @@ READ_ONLY = "readOnly"
 ONE_OF = "oneOf"
 ANY_OF = "anyOf"
 DEFAULT = "default"
+REQUIRED = "required"
 
 ALL_TYPES = ["null", "string", "number", "boolean", "object", "array"]
