@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import calendar
-from datetime import timezone, datetime
+from datetime import datetime
 
 from potion_client import utils
 
@@ -52,6 +52,6 @@ class Date(DataType):
 
     @classmethod
     def resolve(cls, obj, client):
-        return datetime.fromtimestamp(obj["$date"] / 1000, timezone.utc)
+        return datetime.fromtimestamp(obj["$date"] / 1000, utils.timezone.utc)
 
 _handlers["$date"] = Date

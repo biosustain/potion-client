@@ -13,9 +13,9 @@
 # limitations under the License.
 import requests
 from .constants import *
-from potion_client import utils
-from potion_client.exceptions import NotFoundException
-from potion_client.routes import Resource
+from .exceptions import NotFoundException
+from .routes import Resource
+from . import utils
 
 
 class Client(object):

@@ -14,6 +14,8 @@
 import json
 import re
 import string
+
+import six
 from jsonschema import validate
 from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
 
@@ -23,7 +25,7 @@ TYPES = {
     "object": dict,
     "null": type(None),
     "integer": int,
-    "string": str,
+    "string": six.text_type,
     "boolean": bool,
     "number": float
 }
@@ -46,11 +48,11 @@ def validate_response_status(response):
         raise HTTP_EXCEPTIONS.get(code, default_error)(HTTP_MESSAGES.get(code, default_message), response.text)
 
 
-def to_camel_case(a_string: str):
+def to_camel_case(a_string):
     return "".join([part.capitalize() for part in a_string.replace("-", "_").split("_")])
 
 
-def to_snake_case(a_string: str):
+def to_snake_case(a_string):
     return a_string[0].lower() + re.sub('([A-Z])', r'_\1', a_string[1:]).lower()
 
 
@@ -89,7 +91,7 @@ def validate_schema(schema, obj):
 
 
 def type_for(json_type):
-    if isinstance(json_type, str):
+    if isinstance(json_type, six.string_types):
         return [TYPES[json_type]]
     else:
         return [TYPES[t] for t in json_type]
@@ -120,3 +122,24 @@ class JSONEncoder(json.JSONEncoder):
             return obj.to_json
         else:
             return json.JSONEncoder.default(self, obj)
+
+try:
+    from datetime import timezone
+except ImportError:
+    from datetime import tzinfo, timedelta
+
+    class timezone(tzinfo):
+        def __init__(self, utcoffset, name=None):
+            self._utcoffset = utcoffset
+            self._name = name
+
+        def utcoffset(self, dt):
+            return self._utcoffset
+
+        def tzname(self, dt):
+            return self._name
+
+        def dst(self, dt):
+            return timedelta(0)
+
+    timezone.utc = timezone(timedelta(0), 'UTC')

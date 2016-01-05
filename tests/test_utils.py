@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from unittest import TestCase
+
+import six
+
 from potion_client import utils
 
 
@@ -31,7 +34,7 @@ class UtilsTestCase(TestCase):
         self.assertEqual(utils.type_for("object"), [dict])
         self.assertEqual(utils.type_for("array"), [list])
         self.assertEqual(utils.type_for("number"), [float])
-        self.assertEqual(utils.type_for("string"), [str])
+        self.assertEqual(utils.type_for("string"), [six.text_type])
         self.assertEqual(utils.type_for("integer"), [int])
         self.assertEqual(utils.type_for("boolean"), [bool])
         self.assertEqual(utils.type_for("null"), [type(None)])

@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+
 from httmock import HTTMock
+
 from potion_client import Client
-from potion_client_testing import MockAPITestCase
+from tests.potion_client_testing import MockAPITestCase
 
 
 class CreateClientTestCase(MockAPITestCase):

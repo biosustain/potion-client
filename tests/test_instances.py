@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime, timezone
+from datetime import datetime
+
 from httmock import HTTMock
+
 from potion_client import Client
+from potion_client import utils
 from potion_client.routes import MappedAttributeDict
-from potion_client_testing import MockAPITestCase
+from tests.potion_client_testing import MockAPITestCase
 
 
 class InstancesTestCase(MockAPITestCase):
@@ -56,7 +59,7 @@ class InstancesTestCase(MockAPITestCase):
 
     def setUp(self):
         MockAPITestCase.setUp(self)
-        self.time = datetime.fromtimestamp(0, timezone.utc)
+        self.time = datetime.fromtimestamp(0, utils.timezone.utc)
         with HTTMock(self.get_mock):
             self.potion_client = Client()
 
