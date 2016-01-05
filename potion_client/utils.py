@@ -16,7 +16,7 @@ import re
 import string
 import six
 from jsonschema import validate
-from potion_client.exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
+from .exceptions import HTTP_EXCEPTIONS, HTTP_MESSAGES
 
 # Expected types
 TYPES = {
