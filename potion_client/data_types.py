@@ -25,11 +25,11 @@ def for_key(key):
 class DataType(object):
     @classmethod
     def serialize(cls, obj):
-        raise NotImplementedError
+        return obj
 
     @classmethod
     def resolve(cls, obj, client):
-        raise NotImplementedError
+        return obj
 
 
 class Reference(DataType):
