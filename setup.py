@@ -19,22 +19,25 @@ from setuptools import setup, find_packages
 
 
 setup(
-    name='potion-client',
+    name='Potion-client',
     version='0.1.0',
     packages=find_packages(exclude=['*test*']),
     install_requires=['requests>=2.5', 'jsonschema>=2.4', 'six'],
     setup_requires=["nose>=1.3"],
     tests_require=["Flask-Testing>=0.4", "Flask-Potion>=0.2", "Flask-SQLAlchemy>=2.0", "httmock>=1.2"],
     author='João Cardoso and Lars Schöning',
-    author_email='joaca@biosustain.dtu.dk',
-    description='',
+    author_email='lays@biosustain.dtu.dk',
+    description='A client for APIs written in Flask-Potion',
     license='Apache License Version 2.0',
     keywords='potion client',
     url='TBD',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Topic :: Internet',
+        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: 3.4',
         'License :: OSI Approved :: Apache Software License'
     ],
     test_suite='nose.collector'
