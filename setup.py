@@ -20,7 +20,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='Potion-client',
-    version='0.1.0',
+    version='0.1.1',
     packages=find_packages(exclude=['*test*']),
     install_requires=['requests>=2.5', 'jsonschema>=2.4', 'six'],
     setup_requires=["nose>=1.3"],
