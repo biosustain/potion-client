@@ -15,7 +15,7 @@ setup(
     author_email='lays@biosustain.dtu.dk',
     description='A client for APIs written in Flask-Potion',
     long_description=codecs.open('README.rst', encoding='utf-8').read(),
-    requires=[
+    install_requires=[
         'jsonschema>=2.4',
         'requests>=2.5',
         'six'
