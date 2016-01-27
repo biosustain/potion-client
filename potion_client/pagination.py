@@ -1,0 +1,70 @@
+import collections
+from pprint import pformat
+
+from potion_client.utils import escape
+
+
+class Pagination(collections.Sequence):
+    def __init__(self, binding, params):
+        self._pages = {}
+        self._per_page = per_page = 20
+        self._binding = binding
+        self._total_count = 0
+        self._request_params = params
+        self.fetch_page(1, per_page)
+
+    def __getitem__(self, item):
+        # TODO handle slices
+
+        if isinstance(item, slice):
+            return [self.__getitem__(index) for index in range(*item.indices(self._total_count))]
+
+        if item < 0 or item >= self._total_count:
+            raise IndexError()
+
+        page, offset = item // self._per_page + 1, item % self._per_page
+        if page not in self._pages:
+            self.fetch_page(page, self._per_page)
+        return self._pages[page][offset]
+
+    def __len__(self):
+        return self._total_count
+
+    def fetch_page(self, page, per_page):
+        response, response_data = self._binding.make_request(page=page,
+                                                             per_page=per_page,
+                                                             **self._request_params)
+
+        try:
+            self._total_count = int(response.headers['X-Total-Count'])
+        except KeyError:
+            self._total_count = len(response_data)
+
+        self._pages[page] = response_data
+
+    def _repr_html_(self):
+        if len(self) <= 10:
+            items = [escape(pformat(item)) for item in self[:]]
+        else:
+            items = [escape(pformat(item)) for item in self[:5]] + \
+                    ['<strong>...</strong>'] + \
+                    [escape(pformat(item)) for item in self[-5:]]
+
+        return '''<table>
+        <thead>
+            <tr>
+                <th><code>Pagination({resource}.{rel}, {params})</code>: <em>{count} items</em></th>
+            </tr>
+        </thead>
+        <tbody>{items}</tbody>
+        </table>'''.format(resource=self._binding.owner.__name__,
+                           rel=self._binding.link.rel,
+                           params=', '.join('{}={}'.format(k, repr(v)) for k, v in self._request_params.items()),
+                           count=self._total_count,
+                           items='\n'.join('<tr><td><code>{}</code></td></tr>'.format(item) for item in items))
+
+    def __repr__(self):
+        return 'Pagination({}.{}, {})'.format(self._binding.owner.__name__,
+                                                        self._binding.link.rel,
+                                                        ', '.join('{}={}'.format(k, repr(v))
+                                                                  for k, v in self._request_params.items()))

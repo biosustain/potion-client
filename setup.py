@@ -1,0 +1,35 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals
+
+import codecs
+
+from setuptools import setup
+
+setup(
+    name='Potion-client',
+    version='0.2.0',
+    packages=['potion_client'],
+    url='https://github.com/biosustain/potion-client',
+    license='MIT',
+    author='Lars Schöning',
+    author_email='lays@biosustain.dtu.dk',
+    description='A client for APIs written in Flask-Potion',
+    long_description=codecs.open('README.rst', encoding='utf-8').read(),
+    requires=[
+        'jsonschema>=2.4',
+        'requests>=2.5',
+        'six'
+    ],
+    tests_require=[
+        'responses'
+    ],
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Topic :: Internet',
+        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: 3.4',
+        'License :: OSI Approved :: Apache Software License'
+    ],
+)
