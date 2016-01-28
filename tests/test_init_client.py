@@ -5,7 +5,7 @@ from urllib.parse import urlparse, parse_qs
 import responses
 from potion_client import Client, Resource, PotionJSONDecoder
 from potion_client.converter import PotionJSONEncoder
-from potion_client.pagination import Pagination
+from potion_client.collection import PaginatedList
 
 __author__ = 'lyschoening'
 
@@ -305,7 +305,7 @@ class ClientInitTestCase(TestCase):
         # TODO test: result = User.instances(where={"foo": {"$gt": 123}})
         # TODO magic: result = User.instances.where(foo__gt=123).sort(foo=DESC)
 
-        self.assertIsInstance(result, Pagination)
+        self.assertIsInstance(result, PaginatedList)
         self.assertEqual(35, len(result))
         self.assertEqual(1, len(result._pages))
         self.assertEqual([
@@ -322,4 +322,7 @@ class ClientInitTestCase(TestCase):
         pass
 
     def test_circular_response(self):
+        pass
+
+    def test_resource_first(self):
         pass
