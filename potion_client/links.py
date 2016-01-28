@@ -3,7 +3,7 @@ import re
 from requests import Request
 from potion_client import PotionJSONDecoder
 from potion_client.converter import PotionJSONEncoder
-from potion_client.pagination import Pagination
+from potion_client.collection import PaginatedList
 
 __author__ = 'lyschoening'
 
@@ -74,7 +74,7 @@ class LinkBinding(object):
 
     def __call__(self, **params):
         if self.link.returns_pagination():
-            return Pagination(self, params)
+            return PaginatedList(self, params)
 
         response, response_data = self.make_request(**params)
         return response_data
