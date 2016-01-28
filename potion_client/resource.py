@@ -125,7 +125,7 @@ class Resource(Reference, collections.MutableMapping):
 
     @classmethod
     def first(cls, **params):
-        return cls._instances(**params)[0]
+        return cls._instances(per_page=1, **params)[0]
 
     @classmethod
     def fetch(cls, id):
@@ -162,11 +162,11 @@ class Resource(Reference, collections.MutableMapping):
                                  for k, v in self._properties.items() if not k.startswith('$')))
 
     def __repr__(self):
-        if self._status == 200:
-            parts = ['{}={}'.format(k, repr(v)) for k, v in self._properties.items() if not k.startswith('$')]
-            if parts:
-                return '{cls}({id}, {properties})'.format(cls=self.__class__.__name__,
-                                                          id=repr(self.id),
-                                                          properties=', '.join(parts))
-
+        # if self._status == 200:
+        #     parts = ['{}={}'.format(k, repr(v)) for k, v in self._properties.items() if not k.startswith('$')]
+        #     if parts:
+        #         return '{cls}({id}, {properties})'.format(cls=self.__class__.__name__,
+        #                                                   id=repr(self.id),
+        #                                                   properties=', '.join(parts))
+        # TODO some way to define a good key for display
         return '{cls}({id})'.format(cls=self.__class__.__name__, id=repr(self.id))
