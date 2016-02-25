@@ -1,7 +1,6 @@
 import json
 from unittest import TestCase
 from urllib.parse import urlparse, parse_qs
-
 import responses
 from potion_client import Client, Resource, PotionJSONDecoder
 from potion_client.converter import PotionJSONEncoder
@@ -11,11 +10,8 @@ __author__ = 'lyschoening'
 
 
 class ClientInitTestCase(TestCase):
-
-
     @responses.activate
     def test_read_schema(self):
-
         responses.add(responses.GET, 'http://example.com/api/schema', json={
             "properties": {
                 "user": {"$ref": "/api/user/schema#"}
@@ -44,9 +40,6 @@ class ClientInitTestCase(TestCase):
         })
 
         client = Client('http://example.com/api')
-
-
-
 
         self.assertTrue(issubclass(client.User, Resource))
         self.assertEqual("The description for 'user'.", client.User.__doc__)
@@ -96,8 +89,55 @@ class ClientInitTestCase(TestCase):
 
         self.assertEqual(user, client.User(123)._self())
 
-    def test_resource_update_property(self):
+    @responses.activate
+    def test_create(self):
+        responses.add(responses.GET, 'http://example.com/api/schema', json={
+            "properties": {
+                "user": {"$ref": "/api/user/schema#"}
+            }
+        })
 
+        responses.add(responses.GET, 'http://example.com/api/user/schema', json={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "href": "/api/user/{id}",
+                    "method": "GET"
+                },
+                {
+                    "rel": "create",
+                    "href": "/api/user",
+                    "method": "POST"
+                }
+            ]
+        })
+
+        def request_callback(request):
+            request_data = json.loads(request.body)
+            self.assertEqual({"name": "Mr. Foo"}, request_data)
+            return 201, {}, json.dumps({
+                '$uri': '/api/user/{}'.format(1),
+                'name': request_data['name']
+            })
+
+        responses.add_callback(responses.POST, 'http://example.com/api/user',
+                               callback=request_callback,
+                               content_type='application/json')
+
+        client = Client('http://example.com/api')
+
+        user = client.User.create(name="Mr. Foo")
+
+        self.assertEqual(1, user.id)
+        self.assertEqual('Mr. Foo', user.name)
+
+        # TODO user.save() for create
+
+    def test_resource_update_property(self):
         client = Client('http://example.com/api', fetch_schema=False)
 
         User = client.resource_factory('user', {
@@ -138,7 +178,6 @@ class ClientInitTestCase(TestCase):
         foo_a = client.instance('/foo')
         foo_b = client.instance('/foo')
         self.assertIs(foo_a, foo_b)
-
 
     def test_singleton(self):
         client = Client('http://example.com/api', fetch_schema=False)
@@ -283,14 +322,13 @@ class ClientInitTestCase(TestCase):
             ]
         })
 
-
         def request_callback(request):
             users = [
                 {
                     "$uri": "/user/{}".format(i),
                     "name": "user-{}".format(i)
                 } for i in range(1, 36)
-            ]
+                ]
 
             params = parse_qs(urlparse(request.url).query)
             offset = (int(params['page'][0]) - 1) * int(params['per_page'][0])
@@ -309,11 +347,11 @@ class ClientInitTestCase(TestCase):
         self.assertEqual(35, len(result))
         self.assertEqual(1, len(result._pages))
         self.assertEqual([
-            {
-                "$uri": "/user/{}".format(i),
-                "name": "user-{}".format(i)
-            } for i in range(1, 36)
-        ], list(result))
+                             {
+                                 "$uri": "/user/{}".format(i),
+                                 "name": "user-{}".format(i)
+                             } for i in range(1, 36)
+                             ], list(result))
         self.assertEqual(2, len(result._pages))
         self.assertEqual(20, len(result._pages[1]))
         self.assertEqual(15, len(result._pages[2]))

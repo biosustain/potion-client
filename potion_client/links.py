@@ -58,7 +58,7 @@ class LinkBinding(object):
             req = Request(self.link.method,
                           request_url,
                           headers={'content-type': 'application/json'},
-                          json=json.dumps(request_data, cls=PotionJSONEncoder))
+                          data=json.dumps(request_data, cls=PotionJSONEncoder))
         return req
 
     def make_request(self, **params):
