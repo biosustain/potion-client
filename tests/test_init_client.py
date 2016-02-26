@@ -137,6 +137,47 @@ class ClientInitTestCase(TestCase):
 
         # TODO user.save() for create
 
+    @responses.activate
+    def test_send_single_value(self):
+        responses.add(responses.GET, 'http://example.com/api/schema', json={
+            "properties": {
+                "button": {"$ref": "/button/schema#"}
+            }
+        })
+
+        responses.add(responses.GET, 'http://example.com/button/schema', json={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            },
+            "links": [
+                {
+                    "rel": "toggleAll",
+                    "href": "/button/toggle-all",
+                    "method": "POST",
+                    "schema": {
+                        "type": "boolean"
+                    }
+                }
+            ]
+        })
+
+        def request_callback(request):
+            request_data = json.loads(request.body)
+            return 201, {}, json.dumps(request_data)
+
+        responses.add_callback(responses.POST, 'http://example.com/button/toggle-all',
+                               callback=request_callback,
+                               content_type='application/json')
+
+        client = Client('http://example.com/api')
+
+        result = client.Button.toggle_all(False)
+        self.assertEqual(False, result)
+
+        result = client.Button.toggle_all(True)
+        self.assertEqual(True, result)
+
     def test_resource_update_property(self):
         client = Client('http://example.com/api', fetch_schema=False)
 
