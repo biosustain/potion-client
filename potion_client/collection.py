@@ -31,9 +31,9 @@ class PaginatedList(collections.Sequence):
         return self._total_count
 
     def fetch_page(self, page, per_page):
-        response, response_data = self._binding.make_request(page=page,
-                                                             per_page=per_page,
-                                                             **self._request_params)
+        params = dict(page=page, per_page=per_page)
+        params.update(self._request_params)
+        response, response_data = self._binding.make_request(None, params)
 
         try:
             self._total_count = int(response.headers['X-Total-Count'])

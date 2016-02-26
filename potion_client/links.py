@@ -41,19 +41,25 @@ class LinkBinding(object):
         self.instance = instance
         self.owner = owner
 
-    def request_factory(self, **params):
+    def request_factory(self, data, params):
         if self.instance is None:
             request_url = self.owner._client._root_url + self.link.href.format(**params)
         else:
             request_url = self.owner._client._root_url + self.link.href.format(id=self.instance.id, **self.instance)
 
-        request_data = {k: v for k, v in params.items() if k not in self.link.href_placeholders}
+        request_data = data
+        request_params = {k: v  for k, v in params.items() if k not in self.link.href_placeholders}
+
+        if data is None:
+            request_data = request_params
+        elif isinstance(data, dict):
+            request_params = data
 
         if self.link.method == 'GET':
             req = Request(self.link.method,
                           request_url,
                           params={k: json.dumps(v, cls=PotionJSONEncoder)
-                                  for k, v in request_data.items()})
+                                  for k, v in request_params.items()})
         else:
             req = Request(self.link.method,
                           request_url,
@@ -61,8 +67,8 @@ class LinkBinding(object):
                           data=json.dumps(request_data, cls=PotionJSONEncoder))
         return req
 
-    def make_request(self, **params):
-        req = self.request_factory(**params)
+    def make_request(self, data, params):
+        req = self.request_factory(data, params)
         prepared_request = self.owner._client.session.prepare_request(req)
 
         response = self.owner._client.session.send(prepared_request)
@@ -72,9 +78,17 @@ class LinkBinding(object):
     def __getattr__(self, item):
         return getattr(self.link, item)
 
-    def __call__(self, **params):
+    def __call__(self, *arg, **params):
+        data = None
+
+        # Need to pass positional argument as *arg so that properties of the same name are not overridden in **params.
+        if len(arg) > 1:
+            raise TypeError('Link must be called with no more than one positional argument')
+        elif len(arg) == 1:
+            data = arg[0]
+
         if self.link.returns_pagination():
             return PaginatedList(self, params)
 
-        response, response_data = self.make_request(**params)
+        response, response_data = self.make_request(data, params)
         return response_data
