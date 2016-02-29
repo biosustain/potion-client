@@ -3,6 +3,7 @@ from pprint import pformat
 
 import six
 
+from potion_client.exceptions import ItemNotFound
 from potion_client.utils import escape
 
 __author__ = 'lyschoening'
@@ -125,7 +126,10 @@ class Resource(Reference, collections.MutableMapping):
 
     @classmethod
     def first(cls, **params):
-        return cls._instances(per_page=1, **params)[0]
+        try:
+            return cls._instances(per_page=1, **params)[0]
+        except IndexError:
+            raise ItemNotFound("No '{}' item found matching: {}".format(cls.__name__, repr(params)))
 
     @classmethod
     def fetch(cls, id):

@@ -1,0 +1,4 @@
+
+
+class ItemNotFound(Exception):
+    pass
