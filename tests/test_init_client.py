@@ -5,6 +5,7 @@ import responses
 from potion_client import Client, Resource, PotionJSONDecoder
 from potion_client.converter import PotionJSONEncoder
 from potion_client.collection import PaginatedList
+from potion_client.exceptions import ItemNotFound
 
 __author__ = 'lyschoening'
 
@@ -136,6 +137,58 @@ class ClientInitTestCase(TestCase):
         self.assertEqual('Mr. Foo', user.name)
 
         # TODO user.save() for create
+
+    @responses.activate
+    def test_first(self):
+        client = Client('http://example.com', fetch_schema=False)
+
+        User = client.resource_factory('user', {
+            "type": "object",
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "name": {
+                    "type": "string"
+                }
+            },
+            "links": [
+                {
+                    "rel": "instances",
+                    "method": "GET",
+                    "href": "/user",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "page": {"type": "number"},
+                            "per_page": {"type": "number"},
+                        }
+                    }
+                }
+            ]
+        })
+
+        def request_callback(request):
+            print(request)
+            print(request.url)
+
+            if 'missing' in request.url:
+                return 200, {}, '[]'
+            return 200, {}, json.dumps([{"$uri": "/user/1", "name": "foo"}])
+
+        responses.add_callback(responses.GET, 'http://example.com/user',
+                               callback=request_callback,
+                               content_type='application/json')
+
+        self.assertTrue(User.instances.returns_pagination())
+
+        foo = User.first(where={"name": "foo"})
+        self.assertEqual("foo", foo.name)
+
+        with self.assertRaises(ItemNotFound):
+            missing = User.first(where={"name": "missing"})
+
 
     @responses.activate
     def test_send_single_value(self):
