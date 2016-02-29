@@ -73,7 +73,7 @@ class LinkBinding(object):
 
         response = self.owner._client.session.send(prepared_request)
 
-        # return error for some error condtions
+        # return error for some error conditions
         response.raise_for_status()
 
         return response, response.json(cls=PotionJSONDecoder,
