@@ -1,6 +1,6 @@
 from functools import partial
 from operator import getitem, delitem, setitem
-from urllib.parse import urlparse, urljoin
+from six.moves.urllib.parse import urlparse, urljoin
 from weakref import WeakValueDictionary
 import collections
 import requests
@@ -10,11 +10,8 @@ from potion_client.resource import Reference, Resource
 from potion_client.links import Link
 from potion_client.utils import upper_camel_case, snake_case
 
-__author__ = 'lyschoening'
-
 
 class Client(object):
-
     # TODO optional HTTP/2 support: this makes multiple queries simultaneously.
 
     def __init__(self, api_root_url, schema_path='/schema', fetch_schema=True, **session_kwargs):
@@ -28,7 +25,7 @@ class Client(object):
         parse_result = urlparse(api_root_url)
         # FIXME include port, if given
         self._root_url = '{}://{}'.format(parse_result.scheme, parse_result.netloc)
-        self._api_root_url = api_root_url #'{}://{}'.format(parse_result.scheme, parse_result.netloc)
+        self._api_root_url = api_root_url  # '{}://{}'.format(parse_result.scheme, parse_result.netloc)
         self._root_path = parse_result.path
         self._schema_url = api_root_url + schema_path
 
