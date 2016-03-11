@@ -20,8 +20,10 @@ setup(
         'requests>=2.5',
         'six'
     ],
+    test_suite='nose.collector',
     tests_require=[
-        'responses'
+        'responses',
+        'nose>=1.3'
     ],
     classifiers=[
         'Development Status :: 4 - Beta',
@@ -30,6 +32,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
-        'License :: OSI Approved :: Apache Software License'
-    ],
+        'Programming Language :: Python :: 3.5',
+        'License :: OSI Approved :: MIT License'
+    ]
 )
