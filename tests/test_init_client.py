@@ -1,6 +1,6 @@
 import json
 from unittest import TestCase, SkipTest
-from urllib.parse import urlparse, parse_qs
+from six.moves.urllib.parse import urlparse, parse_qs
 from requests import HTTPError
 import responses
 from potion_client import Client, Resource, PotionJSONDecoder
