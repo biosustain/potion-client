@@ -19,12 +19,13 @@ from . import utils
 
 
 class Client(object):
-    def __init__(self, base_url="http://localhost", schema_path="/schema", **requests_kwargs):
+    def __init__(self, base_url="http://localhost", schema_path="/schema", api_prefix = "", **requests_kwargs):
         self._resources = {}
         self.base_url = base_url
+        self.api_prefix = api_prefix
         self._schema_cache = {}
 
-        response = requests.get(base_url + schema_path, **requests_kwargs)
+        response = requests.get(base_url + api_prefix + schema_path, **requests_kwargs)
         utils.validate_response_status(response)
         self._schema = response.json()
         self._schema_cache[schema_path + "#"] = self._schema
