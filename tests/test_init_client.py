@@ -1,6 +1,7 @@
 import json
-from unittest import TestCase
-from urllib.parse import urlparse, parse_qs
+from unittest import TestCase, SkipTest
+from six.moves.urllib.parse import urlparse, parse_qs
+from requests import HTTPError
 import responses
 from potion_client import Client, Resource, PotionJSONDecoder
 from potion_client.converter import PotionJSONEncoder
@@ -76,8 +77,6 @@ class ClientInitTestCase(TestCase):
 
         client = Client('http://example.com/api')
         user = client.User.fetch(123)
-
-        print('user:', user)
 
         self.assertEqual({
             "$uri": "/api/user/123",
@@ -170,9 +169,6 @@ class ClientInitTestCase(TestCase):
         })
 
         def request_callback(request):
-            print(request)
-            print(request.url)
-
             if 'missing' in request.url:
                 return 200, {}, '[]'
             return 200, {}, json.dumps([{"$uri": "/user/1", "name": "foo"}])
@@ -450,11 +446,56 @@ class ClientInitTestCase(TestCase):
         self.assertEqual(20, len(result._pages[1]))
         self.assertEqual(15, len(result._pages[2]))
 
+    @responses.activate
     def test_response_errors(self):
-        pass
+        client = Client('http://example.com', fetch_schema=False)
 
+        User = client.resource_factory('user', {
+            "type": "object",
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "name": {
+                    "type": "string"
+                }
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "method": "GET",
+                    "href": "/user/{id}"
+                },
+                {
+                    "rel": "makeAdmin",
+                    "method": "POST",
+                    "href": "/user/{id}/make-admin"
+                }
+            ]
+        })
+
+        responses.add(responses.GET, 'http://example.com/user/1', status=404, json={
+            "status": 404,
+            "message": "Not Found"
+        })
+
+        responses.add(responses.POST, 'http://example.com/user/2/make-admin', status=400, json={
+            "status": 400,
+            "message": "Forbidden"
+        })
+
+
+        with self.assertRaises(HTTPError) as ctx:
+            User.fetch(1)
+
+        self.assertEqual(404, ctx.exception.response.status_code)
+
+        with self.assertRaises(HTTPError) as ctx:
+            User.make_admin(id=2)
+
+        self.assertEqual(400, ctx.exception.response.status_code)
+
+    @SkipTest
     def test_circular_response(self):
-        pass
-
-    def test_resource_first(self):
         pass

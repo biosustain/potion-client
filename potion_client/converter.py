@@ -1,10 +1,31 @@
 import calendar
 from json import JSONEncoder, JSONDecoder
-from datetime import date, datetime, timezone
-from urllib.parse import urljoin
+from datetime import date, datetime
+from six.moves.urllib.parse import urljoin
 import six
 
 from potion_client.resource import Reference
+
+try:
+    from datetime import timezone
+except ImportError:
+    from datetime import tzinfo, timedelta
+
+    class timezone(tzinfo):
+        def __init__(self, utcoffset, name=None):
+            self._utcoffset = utcoffset
+            self._name = name
+
+        def utcoffset(self, dt):
+            return self._utcoffset
+
+        def tzname(self, dt):
+            return self._name
+
+        def dst(self, dt):
+            return timedelta(0)
+
+    timezone.utc = timezone(timedelta(0), 'UTC')
 
 
 class PotionJSONEncoder(JSONEncoder):
@@ -45,7 +66,7 @@ class PotionJSONEncoder(JSONEncoder):
 
 
 class PotionJSONDecoder(JSONDecoder):
-    def __init__(self, *args, client, referrer=None, uri_to_instance=True, **kwargs):
+    def __init__(self, client, referrer=None, uri_to_instance=True, *args, **kwargs):
         self.client = client
         self.referrer = referrer
         self.uri_to_instance = uri_to_instance
@@ -85,7 +106,7 @@ class JSONSchemaReference(Reference):
 
 
 class PotionJSONSchemaDecoder(JSONDecoder):
-    def __init__(self, *args, client, referrer=None, **kwargs):
+    def __init__(self, client, referrer=None, *args, **kwargs):
         self.client = client
         self.referrer = referrer
         JSONDecoder.__init__(self, *args, **kwargs)
