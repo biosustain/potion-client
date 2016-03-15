@@ -45,6 +45,7 @@ Example
     chomp = client.Animal()
     chomp.owner = u123
     chomp.name = "Chomp"
+    chomp.species = "hamster"
     chomp.save()
 
     pets = client.Animal.instances(where={"owner": u123}, sort={"created_at": True})
