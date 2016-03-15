@@ -21,6 +21,7 @@ Potion client
    :target: https://gitter.im/biosustain/potion?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
 
+
 This is a Python client for APIs written in `Flask-Potion <https://github.com/biosustain/potion>`_ (a powerful Flask extension for self-documenting JSON APIs).
 
 The package uses `Requests <https://github.com/kennethreitz/requests>`_ to provide a super-simple interface to Potion APIs that
@@ -38,16 +39,16 @@ Example
 
     client = Client('http://localhost/api', auth=HTTPBearerAuth('79054025255fb1a26e4bc422aef54eb4'))
 
-    user = client.User(123)
+    u123 = client.User(123)
 
     chomp = client.Animal()
-    chomp.owner = foo
+    chomp.owner = u123
     chomp.name = "Chomp"
     chomp.save()
 
-    pets = client.Animal.instances(where={"owner": user}, sort={"created_at": True})
+    pets = client.Animal.instances(where={"owner": u123}, sort={"created_at": True})
 
-    print("{} has {} pet(s)".format(user.first_name, len(pets))
+    print("{} has {} pet(s)".format(u123.first_name, len(pets))
 
     for pet in pets:
         if pet is not chomp:
