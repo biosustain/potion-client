@@ -1,6 +1,6 @@
 
 =============
-Potion-client
+Potion client
 =============
 
 
@@ -20,17 +20,17 @@ Potion-client
    :alt: Join the chat at https://gitter.im/biosustain/potion
    :target: https://gitter.im/biosustain/potion?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
-This is a Python package to interact with APIs written in Flask-Potion (a powerful Flask extension for self-documenting JSON APIs).
 
+This is a Python client for APIs written in `Flask-Potion <https://github.com/biosustain/potion>`_ (a powerful Flask extension for self-documenting JSON APIs).
 
 The package uses `Requests <https://github.com/kennethreitz/requests>`_ to provide a super-simple interface to Potion APIs that
 works with all common authentication methods. It generates classes for each of the resources in the API and automatically handles pagination
-and resolving and serializing references. It even has some features for `IPython Notebooks <http://ipython.org/notebook.html>`_.
+and resolving and serializing references. It also has some basic `IPython Notebook <http://ipython.org/notebook.html>`_ support.
 
 Example
 =======
 
-::
+.. code-block:: python
 
     from potion_client import Client
     from potion_client.auth import HTTPBearerAuth
@@ -63,7 +63,7 @@ Example
 Installation
 ============
 
-To install `potion-client`, run:
+To install ``potion-client``, run:
 
 ::
 
