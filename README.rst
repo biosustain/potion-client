@@ -1,7 +1,7 @@
 
-=============
-Potion client
-=============
+====================
+Potion Python client
+====================
 
 
 .. image:: https://img.shields.io/travis/biosustain/potion-client/master.svg?style=flat-square
