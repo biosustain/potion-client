@@ -44,7 +44,7 @@ class Client(object):
             resource = self.resource_factory(name, resource_schema)
             setattr(self, upper_camel_case(name), resource)
 
-    def instance(self, uri, cls=None, **kwargs):
+    def instance(self, uri, cls=None, default=None, **kwargs):
         instance = self._instances.get(uri, None)
 
         if instance is None:
@@ -53,9 +53,14 @@ class Client(object):
                     cls = self._resources[uri[:uri.rfind('/')]]
                 except KeyError:
                     cls = Reference
-            instance = cls(uri=uri, **kwargs)
-            self._instances[uri] = instance
 
+            if isinstance(default, Resource) and default.uri is None:
+                default._status = 200
+                default._uri = uri
+                instance = default
+            else:
+                instance = cls(uri=uri, **kwargs)
+            self._instances[uri] = instance
         return instance
 
     def fetch(self, uri, cls=PotionJSONDecoder, **kwargs):
@@ -63,9 +68,7 @@ class Client(object):
         response = self.session \
             .get(urljoin(self._root_url, uri, True))
 
-        # TODO better error handling
-        if response.status_code > 400:
-            raise Exception(response.json())
+        response.raise_for_status()
 
         return response.json(cls=cls,
                              client=self,
@@ -107,6 +110,7 @@ class Client(object):
                 attribute_name = property_name
 
             if property_schema.get('readOnly', False):
+                # TODO better error message. Raises AttributeError("can't set attribute")
                 setattr(cls,
                         attribute_name,
                         property(fget=partial((lambda name, obj: getitem(obj, name)), property_name),

@@ -58,9 +58,12 @@ Example
             print("{} is now friends with Chomp".format(pet.name)))
 
     try:
-        client.User.first(where={"username": "foo"})
+        foo = client.User.first(where={"username": "foo"})
     except ItemNotFound:
         print("User 'foo' does not exist!")
+    else:
+        chomp.update(owner=foo)
+
 
 
 Installation
