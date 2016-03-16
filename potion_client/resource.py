@@ -6,8 +6,6 @@ import six
 from potion_client.exceptions import ItemNotFound
 from potion_client.utils import escape
 
-__author__ = 'lyschoening'
-
 
 class Reference(collections.Mapping):
     """
@@ -61,7 +59,7 @@ class Reference(collections.Mapping):
                                      uri=repr(self._uri))
 
 
-class Resource(Reference, collections.MutableMapping):
+class Resource(Reference):
     _client = None
     _links = None
     _self = None
@@ -73,7 +71,7 @@ class Resource(Reference, collections.MutableMapping):
     def __new__(cls, uri=None, **kwargs):
         instance = None
         if uri is not None:
-            if not isinstance(uri, six.string_types) and cls._self is not None:
+            if not (isinstance(uri, six.string_types) and uri.startswith('/')) and cls._self is not None:
                 uri = cls._self.href.format(id=uri)
 
             instances = cls._client._instances
@@ -119,10 +117,9 @@ class Resource(Reference, collections.MutableMapping):
     def __setitem__(self, item, value):
         self._properties[item] = value
 
-    #XXX
     def update(self, *args, **kwargs):
         self._properties.update(*args, **kwargs)
-        # TODO save()?
+        self.save()
 
     @classmethod
     def first(cls, **params):

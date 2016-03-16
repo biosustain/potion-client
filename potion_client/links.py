@@ -1,11 +1,12 @@
 import json
 import re
-from requests import Request
-from potion_client import PotionJSONDecoder
-from potion_client.converter import PotionJSONEncoder
-from potion_client.collection import PaginatedList
 
-__author__ = 'lyschoening'
+from requests import Request
+
+from potion_client import PotionJSONDecoder
+from potion_client.collection import PaginatedList
+from potion_client.converter import PotionJSONEncoder
+from potion_client.schema import Schema
 
 
 class Link(object):
@@ -15,8 +16,8 @@ class Link(object):
         self.href_placeholders = re.findall(r"{(\w+)}", href)
         self.href = href
         self.rel = rel
-        self.schema = schema
-        self.target_schema = target_schema
+        self.schema = Schema(schema)
+        self.target_schema = Schema(target_schema)
 
     @property
     def requires_instance(self):
@@ -30,9 +31,6 @@ class Link(object):
 
     def __get__(self, instance, owner):
         return LinkBinding(self, instance, owner)
-
-    # def __call__(self, **kwargs):
-    #     print('call link', self.href.format(**kwargs), args, kwargs)
 
 
 class LinkBinding(object):
@@ -48,7 +46,8 @@ class LinkBinding(object):
             request_url = self.owner._client._root_url + self.link.href.format(id=self.instance.id, **self.instance)
 
         request_data = data
-        request_params = {k: v  for k, v in params.items() if k not in self.link.href_placeholders}
+        request_params = {name: value for name, value in params.items()
+                          if name not in self.link.href_placeholders and self.link.schema.can_include_property(name)}
 
         if data is None:
             request_data = request_params
@@ -77,7 +76,8 @@ class LinkBinding(object):
         response.raise_for_status()
 
         return response, response.json(cls=PotionJSONDecoder,
-                                       client=self.owner._client)
+                                       client=self.owner._client,
+                                       default_instance=self.instance)
 
     def __getattr__(self, item):
         return getattr(self.link, item)

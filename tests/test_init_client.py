@@ -1,14 +1,13 @@
 import json
+from datetime import datetime
 from unittest import TestCase, SkipTest
 from six.moves.urllib.parse import urlparse, parse_qs
 from requests import HTTPError
 import responses
 from potion_client import Client, Resource, PotionJSONDecoder
-from potion_client.converter import PotionJSONEncoder
+from potion_client.converter import PotionJSONEncoder, timezone
 from potion_client.collection import PaginatedList
 from potion_client.exceptions import ItemNotFound
-
-__author__ = 'lyschoening'
 
 
 class ClientInitTestCase(TestCase):
@@ -333,6 +332,168 @@ class ClientInitTestCase(TestCase):
         self.assertEqual("foo", result.name)
         self.assertEqual(123, result.id)
 
+    @responses.activate
+    def test_encode_decode_date(self):
+        client = Client('http://example.com', fetch_schema=False)
+
+        Event = client.resource_factory('event', {
+            "type": "object",
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "start_date": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "$date": {
+                            "type": "integer"
+                        }
+                    }
+                }
+            },
+            "links": [
+                {
+                    "rel": "instances",
+                    "method": "GET",
+                    "href": "/event"
+                },
+                {
+                    "rel": "create",
+                    "method": "POST",
+                    "href": "/event",
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "start_date": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "properties": {
+                                    "$date": {
+                                        "type": "integer"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        })
+
+        responses.add(responses.GET, 'http://example.com/event', json=[
+            {
+                "$uri": "/event/1",
+                "start_date": {
+                    "$date": 1451060269000
+                }
+            }
+        ])
+
+        events = Event.instances()
+        self.assertEqual(1, len(events))
+        self.assertEqual({
+            "$uri": "/event/1",
+            "start_date": datetime(2015, 12, 25, 16, 17, 49, tzinfo=timezone.utc)
+        }, events[0]._properties)
+
+
+        def request_callback(request):
+            request_data = json.loads(request.body)
+            self.assertEqual({
+                "start_date": {
+                    "$date": 1451060269000
+                }
+            }, request_data)
+            return 201, {}, json.dumps({
+                "$uri": "/event/2",
+                "start_date": request_data['start_date']
+            })
+
+        responses.add_callback(responses.POST, 'http://example.com/event',
+                               callback=request_callback,
+                               content_type='application/json')
+
+        self.assertEqual(False, Event._create.schema.can_include_property('$uri'))
+        self.assertEqual(True, Event._create.schema.can_include_property('start_date'))
+
+        event = Event()
+        event.start_date = datetime(2015, 12, 25, 16, 17, 49, tzinfo=timezone.utc)
+        event.save()
+
+        self.assertEqual(2, event.id)
+        self.assertEqual({
+            "$uri": "/event/2",
+            "start_date": datetime(2015, 12, 25, 16, 17, 49, tzinfo=timezone.utc)
+        }, event._properties)
+
+    @responses.activate
+    def test_read_only_properties(self):
+        responses.add(responses.GET, 'http://example.com/schema', json={
+            "properties": {
+                "user": {"$ref": "/user/schema#"}
+            }
+        })
+
+        responses.add(responses.GET, 'http://example.com/user/schema', json={
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "name": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "age": {
+                    "type": "integer"
+                }
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "href": "/user/{id}",
+                    "method": "GET"
+                },
+                {
+                    "rel": "update",
+                    "href": "/user/{id}",
+                    "method": "PATCH",
+                    "schema": {
+                        "$ref": "#"
+                    }
+                }
+            ]
+        })
+
+        client = Client('http://example.com')
+
+        def request_callback(request):
+            request_data = json.loads(request.body)
+            self.assertEqual(1, len(request_data))
+            self.assertTrue("age" in request_data)
+            self.assertTrue(request_data['age'] in (20, 21))
+            return 201, {}, json.dumps({
+                "$uri": "/user/1",
+                "age": request_data['age']
+            })
+
+        responses.add_callback(responses.PATCH, 'http://example.com/user/1',
+                               callback=request_callback,
+                               content_type='application/json')
+
+        user = client.User(1, name='Foo')
+        with self.assertRaises(AttributeError):
+            user.name = 'Bar'
+        user.age = 20
+        user.save()
+
+        user.update(name='Bar', age=21)
+        self.assertEqual(user.age, 21)
+
     def test_encode_reference(self):
         client = Client('http://example.com', fetch_schema=False)
 
@@ -362,6 +523,42 @@ class ClientInitTestCase(TestCase):
 
         self.assertEqual({
             "owner": {"$ref": "/user/123"}
+        }, result)
+
+    def test_decode_reference(self):
+        client = Client('http://example.com', fetch_schema=False)
+
+        User = client.resource_factory('user', {
+            "type": "object",
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "name": {
+                    "type": "string"
+                }
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "method": "GET",
+                    "href": "/user/{id}"
+                },
+                {
+                    "rel": "instances",
+                    "method": "GET",
+                    "href": "/user"
+                }
+            ]
+        })
+
+        result = json.loads(json.dumps({
+            "owner": {"$ref": "/user/123"}
+        }), cls=PotionJSONDecoder, client=client)
+
+        self.assertEqual({
+            "owner": User(123)
         }, result)
 
     @responses.activate
@@ -498,4 +695,8 @@ class ClientInitTestCase(TestCase):
 
     @SkipTest
     def test_circular_response(self):
+        pass
+
+    @SkipTest
+    def test_string_ids(self):
         pass

@@ -11,6 +11,7 @@ try:
 except ImportError:
     from datetime import tzinfo, timedelta
 
+    # pragma: no cover
     class timezone(tzinfo):
         def __init__(self, utcoffset, name=None):
             self._utcoffset = utcoffset
@@ -66,13 +67,14 @@ class PotionJSONEncoder(JSONEncoder):
 
 
 class PotionJSONDecoder(JSONDecoder):
-    def __init__(self, client, referrer=None, uri_to_instance=True, *args, **kwargs):
+    def __init__(self, client, referrer=None, uri_to_instance=True, default_instance=None, *args, **kwargs):
         self.client = client
         self.referrer = referrer
         self.uri_to_instance = uri_to_instance
+        self.default_instance = default_instance
         JSONDecoder.__init__(self, *args, **kwargs)
 
-    def _decode(self, o):
+    def _decode(self, o, depth=0):
         if isinstance(o, dict):
             if len(o) == 1:
                 if "$date" in o:
@@ -84,14 +86,18 @@ class PotionJSONDecoder(JSONDecoder):
                     return self.client.instance(reference)
             elif self.uri_to_instance and "$uri" in o and isinstance(o["$uri"], six.string_types):
                 # TODO handle or ("$id" in o and "$type" in o)
-                instance = self.client.instance(o['$uri'])
+                if depth == 0:
+                    instance = self.client.instance(o['$uri'], default=self.default_instance)
+                else:
+                    instance = self.client.instance(o['$uri'])
+
                 instance._status = 200
-                instance._properties.update({k: self._decode(v) for k, v in o.items()})
+                instance._properties.update({k: self._decode(v, depth + 1) for k, v in o.items()})
                 return instance
 
-            return {k: self._decode(v) for k, v in o.items()}
+            return {k: self._decode(v, depth + 1) for k, v in o.items()}
         if isinstance(o, (list, tuple)):
-            return [self._decode(v) for v in o]
+            return [self._decode(v, depth + 1) for v in o]
         return o
 
     def decode(self, s, *args, **kwargs):
