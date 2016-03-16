@@ -4,10 +4,10 @@ Potion client
 =============
 
 
-.. image:: https://img.shields.io/travis/biosustain/potion-client/new-potion-client.svg?style=flat-square
+.. image:: https://img.shields.io/travis/biosustain/potion-client/master.svg?style=flat-square
     :target: https://travis-ci.org/biosustain/potion-client
 
-.. image:: https://img.shields.io/coveralls/biosustain/potion-client/new-potion-client.svg?style=flat-square
+.. image:: https://img.shields.io/coveralls/biosustain/potion-client/master.svg?style=flat-square
     :target: https://coveralls.io/r/biosustain/potion-client
 
 .. image:: https://img.shields.io/pypi/v/Potion-Client.svg?style=flat-square
