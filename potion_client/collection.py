@@ -14,8 +14,6 @@ class PaginatedList(collections.Sequence):
         self.fetch_page(1, per_page)
 
     def __getitem__(self, item):
-        # TODO handle slices
-
         if isinstance(item, slice):
             return [self.__getitem__(index) for index in range(*item.indices(self._total_count))]
 
