@@ -21,7 +21,7 @@ Potion client
    :target: https://gitter.im/biosustain/potion?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
 Description
-=======
+===========
 
 This is a Python client for APIs written in `Flask-Potion <https://github.com/biosustain/potion>`_ (a powerful Flask extension for self-documenting JSON APIs).
 
@@ -63,8 +63,10 @@ Example
         print("User 'foo' does not exist!")
     else:
         chomp.update(owner=foo)
+        print("Chomp has been sold to {}".format(foo.name))
 
-
+    chomp.destroy()
+    print("RIP, Chomp. You lived a happy life.")
 
 Installation
 ============
