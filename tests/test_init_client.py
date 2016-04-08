@@ -47,6 +47,11 @@ class ClientInitTestCase(TestCase):
         self.assertIsInstance(client.User.name, property)
         self.assertEqual("The description for 'user.name'.", client.User.name.__doc__)
 
+        self.assertEqual({
+            'self': client.User._self.link
+        }, client.User._links)
+
+
     @responses.activate
     def test_fetch_instance(self):
         responses.add(responses.GET, 'http://example.com/api/schema', json={

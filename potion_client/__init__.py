@@ -95,8 +95,7 @@ class Client(object):
             # Set Resource._self, etc. for the special methods as they are managed by the Resource class
             if link.rel in ('self', 'instances', 'create', 'update', 'destroy'):
                 setattr(cls, '_{}'.format(link.rel), link)
-            else:
-                links[link.rel] = link
+            links[link.rel] = link
 
             if link.rel != 'update':  # 'update' is a special case because of MutableMapping.update()
                 setattr(cls, snake_case(link.rel), link)
