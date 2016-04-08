@@ -23,6 +23,10 @@ class Client(object):
             setattr(session, key, value)
 
         parse_result = urlparse(api_root_url)
+<<<<<<< HEAD
+=======
+        # FIXME include port, if given
+>>>>>>> f9ce5e36af2016576db77a8ee9df3d5d651e5ef2
         self._root_url = '{}://{}'.format(parse_result.scheme, parse_result.netloc)
         self._api_root_url = api_root_url  # '{}://{}'.format(parse_result.scheme, parse_result.netloc)
         self._root_path = parse_result.path

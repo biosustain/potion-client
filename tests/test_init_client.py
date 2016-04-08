@@ -710,6 +710,10 @@ class ClientInitTestCase(TestCase):
     def test_circular_response(self):
         pass
 
+    @SkipTest
+    def test_string_ids(self):
+        pass
+
     @responses.activate
     def test_subclass_resource(self):
         client = Client('http://example.com', fetch_schema=False)

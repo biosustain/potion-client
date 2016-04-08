@@ -8,7 +8,7 @@ from setuptools import setup
 setup(
     name='Potion-client',
     version='2.1.0',
-    packages=['potion_client'],
+    packages=[str('potion_client')],  # https://bugs.python.org/issue13943
     url='https://github.com/biosustain/potion-client',
     license='MIT',
     author='Lars Schöning',
