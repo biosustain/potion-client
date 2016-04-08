@@ -146,7 +146,9 @@ def schema_resolve_refs(schema, ref_resolver=None, root=None):
 
         resolved = {}
         for k, v in schema.items():
-            resolved[k] = schema_resolve_refs(v, ref_resolver=ref_resolver, root=root or resolved)
+            resolved[k] = schema_resolve_refs(v,
+                                              ref_resolver=ref_resolver,
+                                              root=root if root is not None else resolved)
         return resolved
     if isinstance(schema, (list, tuple)):
         return [schema_resolve_refs(v, ref_resolver=ref_resolver, root=root) for v in schema]
