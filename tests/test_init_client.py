@@ -94,6 +94,14 @@ class ClientInitTestCase(TestCase):
         self.assertEqual(user, client.User(123)._self())
 
     @responses.activate
+    def test_api_uri_with_port(self):
+        responses.add(responses.GET, 'http://example.com:5000/api/schema', json={
+            "properties": {}
+        })
+
+        client = Client('http://example.com:5000/api')
+
+    @responses.activate
     def test_create(self):
         responses.add(responses.GET, 'http://example.com/api/schema', json={
             "properties": {
