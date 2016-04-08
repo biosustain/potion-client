@@ -1,4 +1,5 @@
 import calendar
+from functools import partial
 from json import JSONEncoder, JSONDecoder
 from datetime import date, datetime
 from six.moves.urllib.parse import urljoin
@@ -117,21 +118,36 @@ class PotionJSONSchemaDecoder(JSONDecoder):
         self.referrer = referrer
         JSONDecoder.__init__(self, *args, **kwargs)
 
-    def _decode(self, o):
-        # FIXME more stable implementation that only attempts to resolve {"$ref"} objects where they are allowed.
-        if isinstance(o, dict):
-            if len(o) == 1 and "$ref" in o and isinstance(o["$ref"], six.string_types):
-                reference = o["$ref"]
-                if reference.startswith("#"):
-                    reference = urljoin(self.referrer, reference, True)
-                return self.client.instance(reference,
-                                            cls=JSONSchemaReference,
-                                            client=self.client)
-            return {k: self._decode(v) for k, v in o.items()}
-        if isinstance(o, (list, tuple)):
-            return [self._decode(v) for v in o]
-        return o
-
     def decode(self, s, *args, **kwargs):
         o = JSONDecoder.decode(self, s, *args, **kwargs)
-        return self._decode(o)
+        return schema_resolve_refs(o, partial(self.client.instance,
+                                              cls=JSONSchemaReference,
+                                              client=self.client))
+
+
+def schema_resolve_refs(schema, ref_resolver=None, root=None):
+    """
+    Helper method for decoding references. Self-references are resolved automatically; other references are
+    resolved using a callback function.
+
+    :param object schema:
+    :param callable ref_resolver:
+    :param None root:
+    :return:
+    """
+    # FIXME more stable implementation that only attempts to resolve {"$ref"} objects where they are allowed.
+    if isinstance(schema, dict):
+        if len(schema) == 1 and "$ref" in schema and isinstance(schema["$ref"], six.string_types):
+            reference = schema["$ref"]
+            if reference.startswith("#"):
+                # TODO should also resolve any paths within the reference, which would need to be deferred.
+                return root
+            return ref_resolver(reference)
+
+        resolved = {}
+        for k, v in schema.items():
+            resolved[k] = schema_resolve_refs(v, ref_resolver=ref_resolver, root=root or resolved)
+        return resolved
+    if isinstance(schema, (list, tuple)):
+        return [schema_resolve_refs(v, ref_resolver=ref_resolver, root=root) for v in schema]
+    return schema

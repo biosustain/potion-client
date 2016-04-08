@@ -702,6 +702,69 @@ class ClientInitTestCase(TestCase):
     def test_circular_response(self):
         pass
 
-    @SkipTest
-    def test_string_ids(self):
-        pass
+    @responses.activate
+    def test_subclass_resource(self):
+        client = Client('http://example.com', fetch_schema=False)
+
+        class CustomResource(Resource):
+
+            def is_car(self):
+                return self.wheels == 4
+
+        Vehicle = client.resource_factory('vehicle', {
+            "type": "object",
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "name": {
+                    "type": "string"
+                },
+                "wheels": {
+                    "type": "number"
+                }
+            },
+            "links": [
+                {
+                    "rel": "instances",
+                    "method": "GET",
+                    "href": "/vehicle",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "page": {"type": "number"},
+                            "per_page": {"type": "number"},
+                        }
+                    }
+                },
+                {
+                    "rel": "self",
+                    "method": "GET",
+                    "href": "/vehicle/{id}",
+                    "schema": {
+                        "$ref": "#"
+                    }
+                }
+            ]
+        }, resource_cls=CustomResource)
+
+        self.assertEqual(True, Vehicle(name="Quad", wheels=4).is_car())
+        self.assertEqual(False, Vehicle(name="Bike", wheels=2).is_car())
+
+        responses.add(responses.GET, 'http://example.com/vehicle/2', json={
+            "$uri": "/vehicle/2",
+            "name": "Bus",
+            "wheels": 6
+        })
+
+        responses.add(responses.GET, 'http://example.com/vehicle', json=[{
+            "$uri": "/vehicle/2",
+            "name": "Bus",
+            "wheels": 6
+        }])
+
+        self.assertEqual(6, Vehicle(2).wheels)
+        self.assertEqual(False, Vehicle(2).is_car())
+        self.assertEqual([Vehicle(2)], list(Vehicle.instances()))
+

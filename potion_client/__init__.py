@@ -75,8 +75,18 @@ class Client(object):
                              referrer=uri,
                              **kwargs)
 
-    def resource_factory(self, name, schema):
-        cls = type(str(upper_camel_case(name)), (Resource, collections.MutableMapping), {
+    def resource_factory(self, name, schema, resource_cls=None):
+        """
+        Registers a new resource with a given schema. The schema must not have any unresolved references
+        (such as `{"$ref": "#"}` for self-references, or otherwise). A subclass of :class:`Resource`
+        may be provided to add specific functionality to the resulting :class:`Resource`.
+
+        :param str name:
+        :param dict schema:
+        :param Resource resource_cls: a subclass of :class:`Resource` or None
+        :return: The new :class:`Resource`.
+        """
+        cls = type(str(upper_camel_case(name)), (resource_cls or Resource, collections.MutableMapping), {
             '__doc__': schema.get('description', '')
         })
 
