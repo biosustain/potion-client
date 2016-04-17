@@ -7,7 +7,7 @@ from setuptools import setup
 
 setup(
     name='Potion-client',
-    version='2.1.2',
+    version='2.1.3',
     packages=[str('potion_client')],  # https://bugs.python.org/issue13943
     url='https://github.com/biosustain/potion-client',
     license='MIT',
