@@ -780,3 +780,33 @@ class ClientInitTestCase(TestCase):
         self.assertEqual(False, Vehicle(2).is_car())
         self.assertEqual([Vehicle(2)], list(Vehicle.instances()))
 
+    @responses.activate
+    def test_fetch_resource_uri_id(self):
+        client = Client('http://example.com', fetch_schema=False)
+
+        User = client.resource_factory('user', {
+            "type": "object",
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "name": {
+                    "type": "string"
+                }
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "method": "GET",
+                    "href": "/user/{id}",
+                    "schema": {
+                        "$ref": "#"
+                    }
+                }
+            ]
+        })
+
+        # should not result in a fetch:
+        self.assertEqual('/user/123', User('/user/123').uri)
+        self.assertEqual(123, User('/user/123').id)

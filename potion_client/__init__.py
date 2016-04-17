@@ -112,20 +112,20 @@ class Client(object):
         # TODO routes (instance & non-instance)
 
         for property_name, property_schema in schema['properties'].items():
+            # skip $uri and $id as these are already implemented in Resource and overriding them causes unnecessary
+            # fetches.
             if property_name.startswith('$'):
-                attribute_name = property_name[1:]
-            else:
-                attribute_name = property_name
+                continue
 
             if property_schema.get('readOnly', False):
                 # TODO better error message. Raises AttributeError("can't set attribute")
                 setattr(cls,
-                        attribute_name,
+                        property_name,
                         property(fget=partial((lambda name, obj: getitem(obj, name)), property_name),
                                  doc=property_schema.get('description', None)))
             else:
                 setattr(cls,
-                        attribute_name,
+                        property_name,
                         property(fget=partial((lambda name, obj: getitem(obj, name)), property_name),
                                  fset=partial((lambda name, obj, value: setitem(obj, name, value)), property_name),
                                  fdel=partial((lambda name, obj: delitem(obj, name)), property_name),
