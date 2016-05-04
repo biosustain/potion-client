@@ -60,7 +60,7 @@ class PotionJSONEncoder(JSONEncoder):
 
             if isinstance(o, Reference):
                 # FIXME if reference is not saved, save it first here
-                return {"$ref": o.uri}
+                return {"$ref": o._uri}
 
             return o
 

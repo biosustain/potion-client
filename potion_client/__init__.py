@@ -6,7 +6,7 @@ import collections
 import requests
 
 from potion_client.converter import PotionJSONDecoder, PotionJSONSchemaDecoder
-from potion_client.resource import Reference, Resource
+from potion_client.resource import Reference, Resource, uri_for
 from potion_client.links import Link
 from potion_client.utils import upper_camel_case, snake_case
 
@@ -53,7 +53,7 @@ class Client(object):
                 except KeyError:
                     cls = Reference
 
-            if isinstance(default, Resource) and default.uri is None:
+            if isinstance(default, Resource) and default._uri is None:
                 default._status = 200
                 default._uri = uri
                 instance = default

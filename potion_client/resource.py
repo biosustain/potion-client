@@ -7,6 +7,16 @@ from potion_client.exceptions import ItemNotFound
 from potion_client.utils import escape
 
 
+def uri_for(reference):
+    """
+    Utility function for accessing the URI or a reference.
+
+    :param reference:
+    :return:
+    """
+    return reference._uri
+
+
 class Reference(collections.Mapping):
     """
 
@@ -49,10 +59,6 @@ class Reference(collections.Mapping):
 
     def __len__(self):
         return len(self._properties)
-
-    @property
-    def uri(self):
-        return self._uri
 
     def __repr__(self):
         return '{cls}({uri})'.format(cls=self.__class__.__name__,
@@ -139,7 +145,7 @@ class Resource(Reference):
         # TODO only save the appropriate properties defined in the schemas
         # That logic should live in the links themselves.
 
-        if self.uri is None:
+        if self._uri is None:
             return self._create(**self)
         else:
             return self._update(**self)

@@ -4,7 +4,7 @@ from unittest import TestCase, SkipTest
 from six.moves.urllib.parse import urlparse, parse_qs
 from requests import HTTPError
 import responses
-from potion_client import Client, Resource, PotionJSONDecoder
+from potion_client import Client, Resource, PotionJSONDecoder, uri_for
 from potion_client.converter import PotionJSONEncoder, timezone
 from potion_client.collection import PaginatedList
 from potion_client.exceptions import ItemNotFound
@@ -267,7 +267,7 @@ class ClientInitTestCase(TestCase):
         }, user._properties)
 
         with self.assertRaises(AttributeError):
-            user.uri = '/user/123'
+            user.id = 123
 
     @responses.activate
     def test_instance_cache(self):
@@ -808,5 +808,5 @@ class ClientInitTestCase(TestCase):
         })
 
         # should not result in a fetch:
-        self.assertEqual('/user/123', User('/user/123').uri)
+        self.assertEqual('/user/123', uri_for(User('/user/123')))
         self.assertEqual(123, User('/user/123').id)
