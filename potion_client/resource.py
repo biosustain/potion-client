@@ -41,6 +41,7 @@ class Reference(collections.Mapping):
     def _properties(self):
         if self._uri and self._status is None:
             self.__properties = self._resolve(self._client, self._uri)
+            self._status = 200
         return self.__properties
 
     @_properties.setter

@@ -781,6 +781,88 @@ class ClientInitTestCase(TestCase):
         self.assertEqual([Vehicle(2)], list(Vehicle.instances()))
 
     @responses.activate
+    def test_resource_relationships(self):
+
+        responses.add(responses.GET, 'http://example.com/api/schema', json={
+            "properties": {
+                "user": {"$ref": "/api/user/schema#"},
+                "vehicle": {"$ref": "/api/vehicle/schema#"}
+            }
+        })
+
+        responses.add(responses.GET, 'http://example.com/api/user/schema', json={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "href": "/api/user/{id}",
+                    "method": "GET"
+                }
+            ]
+        })
+
+        responses.add(responses.GET, 'http://example.com/api/vehicle/schema', json={
+            "type": "object",
+            "properties": {
+                "$uri": {
+                    "type": "string",
+                    "readOnly": True
+                },
+                "name": {
+                    "type": "string"
+                },
+                "owner": {
+                    "additionalProperties": False,
+                    "properties": {
+                        "$ref": {
+                            "pattern": "^\\/api\\/users\\/[^/]+$",
+                            "type": "string"
+                        }
+                    },
+                    "readOnly": True,
+                    "type": "object"
+                },
+            },
+            "links": [
+                {
+                    "rel": "self",
+                    "method": "GET",
+                    "href": "/api/vehicle/{id}",
+                    "schema": {
+                        "$ref": "#"
+                    }
+                }
+            ]
+        })
+
+        responses.add(responses.GET, 'http://example.com/api/user/123', json={
+            "$uri": "/api/user/123",
+            "name": "foo"
+        })
+
+        responses.add(responses.GET, 'http://example.com/api/vehicle/456', json={
+            "$uri": "/api/vehicle/456",
+            "name": "Bus",
+            "wheels": 6,
+            "owner": {"$ref": "/api/user/123"}
+        })
+
+        client = Client('http://example.com/api')
+        vehicle = client.Vehicle.fetch(456)
+        self.assertEqual(200, vehicle._status)
+        vehicle.name = "Minivan"
+        owner = vehicle.owner  # Doesn't set _properties, thus status code is None
+        self.assertEqual(None, owner._status)
+        self.assertEqual(4, len(responses.calls))  # 3 schema, 1 for vehicle GET
+
+        owner.name = "Minivan Owner"  # Sets properties, access should trigger get too
+        self.assertEqual(200, owner._status)  # Needs to get set when _properties are created
+        self.assertEqual(5, len(responses.calls))  # 3 schema, vehicle GET, owner GET
+
+    @responses.activate
     def test_fetch_resource_uri_id(self):
         client = Client('http://example.com', fetch_schema=False)
 
