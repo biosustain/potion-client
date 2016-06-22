@@ -2,6 +2,7 @@ import json
 import re
 
 from requests import Request
+from requests.exceptions import HTTPError
 
 from potion_client import PotionJSONDecoder
 from potion_client.collection import PaginatedList
@@ -66,6 +67,25 @@ class LinkBinding(object):
                           data=json.dumps(request_data, cls=PotionJSONEncoder))
         return req
 
+    def raise_for_status(self, response):
+        http_error_msg = ''
+
+        if 400 <= response.status_code < 500:
+            try:
+                http_error_msg = response.json()
+            except:
+                http_error_msg = ('{code} Client Error: {reason} for url: {url}'.format(
+                    code=response.status_code, reason=response.reason, url=response.url)
+                )
+
+        elif 500 <= response.status_code < 600:
+            http_error_msg = ('{code} Server Error: {reason} for url: {url}'.format(
+                code=response.status_code, reason=response.reason, url=response.url)
+            )
+
+        if http_error_msg:
+            raise HTTPError(http_error_msg, response=response)
+
     def make_request(self, data, params):
         req = self.request_factory(data, params)
         prepared_request = self.owner._client.session.prepare_request(req)
@@ -73,7 +93,7 @@ class LinkBinding(object):
         response = self.owner._client.session.send(prepared_request)
 
         # return error for some error conditions
-        response.raise_for_status()
+        self.raise_for_status(response)
 
         return response, response.json(cls=PotionJSONDecoder,
                                        client=self.owner._client,
