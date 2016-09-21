@@ -32,6 +32,7 @@ except ImportError:
 
 class PotionJSONEncoder(JSONEncoder):
     def encode(self, o):
+        root_id = id(o)
         if self.check_circular:
             markers = {}
         else:
@@ -42,6 +43,8 @@ class PotionJSONEncoder(JSONEncoder):
                 if markers is not None:
                     marker_id = id(o)
                     if marker_id in markers:
+                        if marker_id == root_id:
+                            return {"$ref": "#"}
                         raise ValueError("Circular reference detected")
                     markers[marker_id] = o
                 try:
