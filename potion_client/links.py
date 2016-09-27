@@ -95,7 +95,7 @@ class LinkBinding(object):
         # return error for some error conditions
         self.raise_for_status(response)
 
-        if response.status == 204:
+        if response.status_code == 204:
             return response, None
 
         return response, response.json(cls=PotionJSONDecoder,
