@@ -3,7 +3,7 @@ from pprint import pformat
 
 import six
 
-from potion_client.exceptions import ItemNotFound
+from potion_client.exceptions import ItemNotFound, MultipleItemsFound
 from potion_client.utils import escape
 
 
@@ -132,6 +132,16 @@ class Resource(Reference):
     def first(cls, **params):
         try:
             return cls._instances(per_page=1, **params)[0]
+        except IndexError:
+            raise ItemNotFound("No '{}' item found matching: {}".format(cls.__name__, repr(params)))
+
+    @classmethod
+    def one(cls, **params):
+        matching = cls._instances(per_page=1, **params)
+        if len(matching) > 1:
+            raise MultipleItemsFound("Multiple items found matching: {}".format(repr(params)))
+        try:
+            return matching[0]
         except IndexError:
             raise ItemNotFound("No '{}' item found matching: {}".format(cls.__name__, repr(params)))
 

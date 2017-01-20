@@ -3,7 +3,6 @@ import re
 __author__ = 'lyschoening'
 
 
-
 def camel_case(s):
     return s[0].lower() + s.title().replace('-', '').replace('_', '')[1:] if s else s
 
