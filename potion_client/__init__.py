@@ -111,7 +111,7 @@ class Client(object):
 
         # TODO routes (instance & non-instance)
 
-        for property_name, property_schema in schema['properties'].items():
+        for property_name, property_schema in schema.get('properties', {}).items():
             # skip $uri and $id as these are already implemented in Resource and overriding them causes unnecessary
             # fetches.
             if property_name.startswith('$'):
