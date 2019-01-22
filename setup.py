@@ -12,7 +12,7 @@ setup(
     url='https://github.com/biosustain/potion-client',
     license='MIT',
     author='Lars Schöning',
-    author_email='lays@biosustain.dtu.dk',
+    author_email='lars@lyschoening.de',
     description='A client for APIs written in Flask-Potion',
     long_description=codecs.open('README.rst', encoding='utf-8').read(),
     install_requires=[
