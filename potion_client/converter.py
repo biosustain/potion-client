@@ -1,6 +1,11 @@
 import calendar
 from functools import partial
-from json import JSONEncoder, JSONDecoder
+
+try:
+    from simplejson import JSONEncoder, JSONDecoder
+except ImportError:
+    from json import JSONEncoder, JSONDecoder
+
 from datetime import date, datetime
 from six.moves.urllib.parse import urljoin
 import six
