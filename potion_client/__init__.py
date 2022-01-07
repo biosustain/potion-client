@@ -2,7 +2,12 @@ from functools import partial
 from operator import getitem, delitem, setitem
 from six.moves.urllib.parse import urlparse, urljoin
 from weakref import WeakValueDictionary
-import collections
+
+if(os.python.version > 3.6):
+    import collections.abc as collections
+else:
+    import collections
+
 import requests
 
 from potion_client.converter import PotionJSONDecoder, PotionJSONSchemaDecoder

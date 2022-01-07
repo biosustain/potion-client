@@ -1,4 +1,8 @@
-import collections
+if(os.python.version > 3.6):
+    import collections.abc as collections
+else:
+    import collections
+
 import re
 
 
