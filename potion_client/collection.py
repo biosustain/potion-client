@@ -1,10 +1,13 @@
-import collections
+try:
+    import collections.abc as collections_abc
+except ImportError:
+    import collections as collections_abc
 from pprint import pformat
 
 from potion_client.utils import escape
 
 
-class PaginatedList(collections.Sequence):
+class PaginatedList(collections_abc.Sequence):
     def __init__(self, binding, params):
         self._pages = {}
         self._per_page = per_page = params.pop('per_page', 20)

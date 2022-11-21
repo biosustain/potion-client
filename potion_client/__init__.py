@@ -2,7 +2,10 @@ from functools import partial
 from operator import getitem, delitem, setitem
 from six.moves.urllib.parse import urlparse, urljoin
 from weakref import WeakValueDictionary
-import collections
+try:
+    import collections.abc as collections_abc
+except ImportError:
+    import collections as collections_abc
 import requests
 
 from potion_client.converter import PotionJSONDecoder, PotionJSONSchemaDecoder
@@ -85,7 +88,7 @@ class Client(object):
         :param Resource resource_cls: a subclass of :class:`Resource` or None
         :return: The new :class:`Resource`.
         """
-        cls = type(str(upper_camel_case(name)), (resource_cls or Resource, collections.MutableMapping), {
+        cls = type(str(upper_camel_case(name)), (resource_cls or Resource, collections_abc.MutableMapping), {
             '__doc__': schema.get('description', '')
         })
 
